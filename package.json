@@ -1,0 +1,32 @@
+{
+  "name": "article-to-slides-automation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "google:oauth": "tsx src/scripts/authorizeGoogleOAuth.ts",
+    "google:oauth:url": "tsx src/scripts/printGoogleOAuthUrl.ts",
+    "google:oauth:code": "tsx src/scripts/saveGoogleOAuthCode.ts",
+    "codex:preflight": "tsx src/scripts/codexPreflight.ts",
+    "jobs:process": "tsx src/scripts/processSlideJob.ts",
+    "slides:create": "tsx src/scripts/createSlidesFromOutline.ts",
+    "slides:create:gas": "tsx src/scripts/createSlidesViaGas.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/formbody": "^8.0.2",
+    "@slack/socket-mode": "^2.0.6",
+    "@slack/web-api": "^7.9.3",
+    "fastify": "^5.3.2",
+    "googleapis": "^148.0.0",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.32",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  }
+}

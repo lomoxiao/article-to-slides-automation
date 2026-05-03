@@ -1,0 +1,362 @@
+{
+  "id": "auto-slides-template",
+  "version": "0.1.0",
+  "source": {
+    "path": "templates/auto-slides-template.md",
+    "description": "User-provided slideData generation template converted into machine-readable output settings."
+  },
+  "output": {
+    "objectName": "slideData",
+    "format": "json_array_only",
+    "mustNotInclude": [
+      "const slideData =",
+      "markdown code fence",
+      "introductory explanation",
+      "closing explanation"
+    ],
+    "description": "Return the slideData array itself as valid JSON. Do not wrap it in a variable declaration or prose."
+  },
+  "language": {
+    "default": "ja",
+    "notes": "plain_text"
+  },
+  "deckPolicy": {
+    "includeSpeakerNotes": true,
+    "preferSpecializedPatterns": true,
+    "maxContentPatternRatio": 0.3,
+    "minimumDistinctPatterns": 5,
+    "avoidConsecutiveSamePattern": true,
+    "includeAgendaWhenMultipleChapters": true,
+    "imagePolicy": {
+      "allowImageTextOnlyWhenExplicitImageUrlExists": true,
+      "doNotSearchGenerateOrInferImages": true,
+      "fallbackToNonImagePatternWithoutUrl": true
+    }
+  },
+  "selectionRules": [
+    {
+      "condition": "章が2つ以上ある",
+      "prefer": ["agenda"]
+    },
+    {
+      "condition": "数値・KPI・主要指標がある",
+      "prefer": ["kpi", "progress", "statsCompare", "barCompare", "table"]
+    },
+    {
+      "condition": "2つの対象を比較する",
+      "prefer": ["compare", "statsCompare", "barCompare"]
+    },
+    {
+      "condition": "時系列・手順・プロセスがある",
+      "prefer": ["timeline", "process", "processList", "flowChart"]
+    },
+    {
+      "condition": "階層・成熟度・段階構造がある",
+      "prefer": ["pyramid", "stepUp", "triangle"]
+    },
+    {
+      "condition": "循環・関係性がある",
+      "prefer": ["cycle", "diagram", "triangle"]
+    },
+    {
+      "condition": "Q&A・FAQがある",
+      "prefer": ["faq"]
+    },
+    {
+      "condition": "引用・証言がある",
+      "prefer": ["quote"]
+    }
+  ],
+  "validationRules": {
+    "text": {
+      "subheadMaxChars": 50,
+      "noNewlineInBulletItems": true,
+      "forbiddenCharacters": ["■", "→"],
+      "avoidSentenceEndingPeriodInBullets": true,
+      "titleMustNotUsePrimaryEmphasis": true,
+      "notesMustStripEmphasisSyntax": true
+    },
+    "decorationSanitizer": {
+      "removeLeadingNumbering": true,
+      "removeStepPrefixes": true,
+      "removeDuplicateCompareLabels": true,
+      "avoidLeadingPunctuation": true
+    },
+    "agenda": {
+      "mustNotBeEmpty": true,
+      "minItems": 3,
+      "itemsMustNotContainNumbers": true
+    }
+  },
+  "emphasisSyntax": {
+    "bold": {
+      "syntax": "**text**",
+      "allowedEverywhere": true
+    },
+    "primary": {
+      "syntax": "[[text]]",
+      "allowedIn": [
+        "points",
+        "leftItems",
+        "rightItems",
+        "steps",
+        "milestones.label",
+        "items.desc",
+        "items.q",
+        "items.a"
+      ],
+      "forbiddenIn": [
+        "title",
+        "subhead",
+        "items.title",
+        "headers",
+        "leftTitle",
+        "rightTitle",
+        "centerText"
+      ]
+    }
+  },
+  "slideTypes": {
+    "title": {
+      "required": ["type", "title", "date"],
+      "optional": ["notes"],
+      "fields": {
+        "type": "title",
+        "title": "string",
+        "date": "YYYY.MM.DD",
+        "notes": "string"
+      }
+    },
+    "section": {
+      "required": ["type", "title"],
+      "optional": ["sectionNo", "notes"],
+      "fields": {
+        "type": "section",
+        "title": "string",
+        "sectionNo": "number",
+        "notes": "string"
+      }
+    },
+    "closing": {
+      "required": ["type"],
+      "optional": ["notes"],
+      "fields": {
+        "type": "closing",
+        "notes": "string"
+      }
+    },
+    "content": {
+      "required": ["type", "title"],
+      "optional": ["subhead", "points", "twoColumn", "columns", "notes"],
+      "limits": {
+        "usageRatioMax": 0.3
+      }
+    },
+    "agenda": {
+      "required": ["type", "title", "items"],
+      "optional": ["subhead", "notes"],
+      "limits": {
+        "minItems": 3
+      }
+    },
+    "compare": {
+      "required": ["type", "title", "leftTitle", "rightTitle", "leftItems", "rightItems"],
+      "optional": ["subhead", "notes"]
+    },
+    "process": {
+      "required": ["type", "title", "steps"],
+      "optional": ["subhead", "notes"],
+      "limits": {
+        "maxSteps": 4
+      }
+    },
+    "processList": {
+      "required": ["type", "title", "steps"],
+      "optional": ["subhead", "notes"]
+    },
+    "timeline": {
+      "required": ["type", "title", "milestones"],
+      "optional": ["subhead", "notes"],
+      "itemShape": {
+        "label": "string",
+        "date": "string",
+        "state": "done|next|todo"
+      },
+      "limits": {
+        "milestoneLabelMaxChars": 30
+      }
+    },
+    "diagram": {
+      "required": ["type", "title", "lanes"],
+      "optional": ["subhead", "notes"],
+      "itemShape": {
+        "title": "string",
+        "items": "string[]"
+      }
+    },
+    "cycle": {
+      "required": ["type", "title", "items"],
+      "optional": ["subhead", "centerText", "notes"],
+      "limits": {
+        "items": 4,
+        "itemLabelApproxChars": 20
+      }
+    },
+    "cards": {
+      "required": ["type", "title", "items"],
+      "optional": ["subhead", "columns", "notes"],
+      "limits": {
+        "columns": [2, 3],
+        "maxItems": 6
+      }
+    },
+    "headerCards": {
+      "required": ["type", "title", "items"],
+      "optional": ["subhead", "columns", "notes"],
+      "limits": {
+        "columns": [2, 3],
+        "maxItems": 6
+      }
+    },
+    "table": {
+      "required": ["type", "title", "headers", "rows"],
+      "optional": ["subhead", "notes"]
+    },
+    "progress": {
+      "required": ["type", "title", "items"],
+      "optional": ["subhead", "notes"],
+      "itemShape": {
+        "label": "string",
+        "percent": "number"
+      },
+      "limits": {
+        "maxItems": 5,
+        "percentMin": 0,
+        "percentMax": 100
+      }
+    },
+    "quote": {
+      "required": ["type", "title", "text", "author"],
+      "optional": ["subhead", "notes"]
+    },
+    "kpi": {
+      "required": ["type", "title", "items"],
+      "optional": ["subhead", "columns", "notes"],
+      "itemShape": {
+        "label": "string",
+        "value": "string",
+        "change": "string",
+        "status": "good|bad|neutral"
+      },
+      "limits": {
+        "columns": [2, 3, 4],
+        "maxItems": 4
+      }
+    },
+    "bulletCards": {
+      "required": ["type", "title", "items"],
+      "optional": ["subhead", "notes"],
+      "limits": {
+        "maxItems": 3
+      }
+    },
+    "faq": {
+      "required": ["type", "title", "items"],
+      "optional": ["subhead", "notes"],
+      "itemShape": {
+        "q": "string",
+        "a": "string"
+      },
+      "limits": {
+        "minItems": 1,
+        "maxItems": 4
+      }
+    },
+    "statsCompare": {
+      "required": ["type", "title", "leftTitle", "rightTitle", "stats"],
+      "optional": ["subhead", "notes"],
+      "itemShape": {
+        "label": "string",
+        "leftValue": "string",
+        "rightValue": "string",
+        "trend": "up|down|neutral"
+      },
+      "limits": {
+        "recommendedItemsMin": 2,
+        "recommendedItemsMax": 5
+      }
+    },
+    "barCompare": {
+      "required": ["type", "title", "stats"],
+      "optional": ["subhead", "showTrends", "notes"],
+      "itemShape": {
+        "label": "string",
+        "leftValue": "string",
+        "rightValue": "string",
+        "trend": "up|down|neutral"
+      },
+      "limits": {
+        "recommendedItemsMin": 2,
+        "recommendedItemsMax": 4
+      }
+    },
+    "triangle": {
+      "required": ["type", "title", "items"],
+      "optional": ["subhead", "notes"],
+      "limits": {
+        "items": 3,
+        "itemTitleApproxChars": 12,
+        "itemDescApproxChars": 15
+      }
+    },
+    "pyramid": {
+      "required": ["type", "title", "levels"],
+      "optional": ["subhead", "notes"],
+      "limits": {
+        "minLevels": 3,
+        "maxLevels": 4
+      }
+    },
+    "flowChart": {
+      "required": ["type", "title", "flows"],
+      "optional": ["subhead", "notes"],
+      "limits": {
+        "minStepsPerFlow": 2,
+        "maxStepsPerFlow": 4,
+        "maxFlows": 2,
+        "maxTotalSteps": 8
+      }
+    },
+    "stepUp": {
+      "required": ["type", "title", "items"],
+      "optional": ["subhead", "notes"],
+      "limits": {
+        "minItems": 2,
+        "maxItems": 5
+      }
+    },
+    "imageText": {
+      "required": ["type", "title", "image", "points"],
+      "optional": ["subhead", "imageCaption", "imagePosition", "notes"],
+      "limits": {
+        "imagePosition": ["left", "right"]
+      }
+    }
+  },
+  "chartTypes": [
+    "multi-line",
+    "donut",
+    "stacked-bar",
+    "100-stacked-bar",
+    "bar",
+    "combo",
+    "line"
+  ],
+  "promptContract": {
+    "role": "slideData JSON generator",
+    "task": "Analyze source text and produce only a valid slideData JSON array.",
+    "mustGenerateNotes": true,
+    "mustSelectBestPatternPerSlide": true,
+    "mustValidateBeforeOutput": true
+  }
+}

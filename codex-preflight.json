@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-04-29T07:47:24.553Z",
+  "resolvedCodexPath": "D:\\work\\codex\\article-to-slides-automation\\.codex-runner-home\\bin\\codex.exe",
+  "checks": {
+    "pathNotWindowsApps": true,
+    "fileExists": true,
+    "versionCheck": {
+      "ok": true,
+      "output": "codex-cli 0.126.0-alpha.8"
+    },
+    "runnerHomeWritable": true,
+    "authJsonCopied": true,
+    "configTomlCopied": true
+  },
+  "ok": true
+}

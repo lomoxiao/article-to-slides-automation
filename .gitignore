@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.bk
+*.log
+google-service-account.json
+google-oauth-credentials.json
+google-oauth-token.json
+.codex-runner-home/
+jobs/
