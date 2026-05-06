@@ -3,7 +3,7 @@ import { config } from "../config.js";
 import { notifySlackJobFailed, postSlackText } from "../services/slackNotifier.js";
 import { processSlideJob } from "../services/slideJobProcessor.js";
 import { runUrlToGasSlidesWorkflow } from "../workflows/urlToGasSlides.js";
-import { extractFirstUrl } from "../utils/url.js";
+import { parseSlideArgs } from "../utils/parseSlideArgs.js";
 
 const SLIDE_GENERATE_PREFIX = "[slide-generate]";
 const MAX_PROCESSED_REQUEST_IDS = 500;
@@ -41,7 +41,11 @@ type EventsApiEnvelope = {
 };
 
 type EnqueueSlideGenerationInput = {
-  url: string;
+  urls?: string[];
+  researchPrompt?: string;
+  audience?: string;
+  focus?: string;
+  pages?: number;
   requestedBy?: string;
   sourceChannelId?: string;
 };
@@ -61,12 +65,12 @@ export async function startSlackSocketModeClient() {
       return;
     }
 
-    const url = extractFirstUrl(body?.text ?? "");
+    const slideArgs = parseSlideArgs(body?.text ?? "");
 
-    if (!url) {
+    if (!slideArgs.ok) {
       await ack({
         response_type: "ephemeral",
-        text: "URLを見つけられませんでした。`/slides https://example.com/article` の形式で送ってください。"
+        text: slideArgs.errorMessage
       });
       return;
     }
@@ -75,7 +79,11 @@ export async function startSlackSocketModeClient() {
 
     try {
       jobId = await enqueueSlideGeneration({
-        url,
+        urls: slideArgs.urls,
+        researchPrompt: slideArgs.researchPrompt,
+        audience: slideArgs.audience,
+        focus: slideArgs.focus,
+        pages: slideArgs.pages,
         requestedBy: body?.user_id,
         sourceChannelId: body?.channel_id
       });
@@ -115,14 +123,22 @@ export async function startSlackSocketModeClient() {
     }
     rememberSlideRequest(requestId);
 
-    const url = extractFirstUrl(messageEvent.text ?? "");
-    if (!url) {
+    const slideArgs = parseSlideArgs(stripSlideGeneratePrefix(messageEvent.text ?? ""));
+    if (!slideArgs.ok) {
+      await postSlackText({
+        channelId: messageEvent.channel,
+        text: slideArgs.errorMessage
+      });
       return;
     }
 
     try {
       const jobId = await enqueueSlideGeneration({
-        url,
+        urls: slideArgs.urls,
+        researchPrompt: slideArgs.researchPrompt,
+        audience: slideArgs.audience,
+        focus: slideArgs.focus,
+        pages: slideArgs.pages,
         requestedBy: messageEvent.user,
         sourceChannelId: messageEvent.channel
       });
@@ -175,10 +191,6 @@ function isSlideGenerateMessage(event: SlackMessageEvent | undefined): event is 
     return false;
   }
 
-  if (!extractFirstUrl(text)) {
-    return false;
-  }
-
   return true;
 }
 
@@ -224,14 +236,22 @@ function logSlideGenerateEventDecision(event: SlackMessageEvent | undefined) {
     return;
   }
 
-  if (!extractFirstUrl(text)) {
-    console.log(`[slide-generate] ignored: URL not found text=${JSON.stringify(preview)}`);
+  const args = parseSlideArgs(stripSlideGeneratePrefix(text));
+  if (!args.ok) {
+    console.log(`[slide-generate] accepted with parse error: ${args.errorMessage} text=${JSON.stringify(preview)}`);
     return;
   }
 
   console.log(
     `[slide-generate] accepted: channel=${event.channel} subtype=${event.subtype ?? "none"} user=${event.user ?? "unknown"} bot=${event.bot_id ?? "none"}`
   );
+}
+
+function stripSlideGeneratePrefix(text: string) {
+  const trimmed = text.trim();
+  return trimmed.startsWith(SLIDE_GENERATE_PREFIX)
+    ? trimmed.slice(SLIDE_GENERATE_PREFIX.length).trim()
+    : trimmed;
 }
 
 function isAllowedSlideGenerateChannel(channelId: string) {

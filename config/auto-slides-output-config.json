@@ -28,9 +28,11 @@
     "avoidConsecutiveSamePattern": true,
     "includeAgendaWhenMultipleChapters": true,
     "imagePolicy": {
-      "allowImageTextOnlyWhenExplicitImageUrlExists": true,
+      "allowImageTextOnlyWhenExplicitImageUrlExists": false,
+      "allowImageTextWithSvgChartJson": true,
       "doNotSearchGenerateOrInferImages": true,
-      "fallbackToNonImagePatternWithoutUrl": true
+      "fallbackToNonImagePatternWithoutUrl": false,
+      "note": "imageText は SVGチャートJSON（imageフィールドにchartTypeオブジェクト）でも使用可。数値データがあれば積極的に使うこと。"
     }
   },
   "selectionRules": [
@@ -40,15 +42,30 @@
     },
     {
       "condition": "数値・KPI・主要指標がある",
-      "prefer": ["kpi", "progress", "statsCompare", "barCompare", "table"]
+      "prefer": ["imageText", "table"],
+      "note": "数値はimageText+SVGチャートJSON(CHART_DESIGN)で表現。kpi/progress/statsCompare/barCompareは使用禁止。"
     },
     {
-      "condition": "2つの対象を比較する",
-      "prefer": ["compare", "statsCompare", "barCompare"]
+      "condition": "2つの対象を数値で比較する",
+      "prefer": ["imageText"],
+      "note": "imageTextのimageフィールドにCHART_DESIGNのbarチャートJSONを入力。statsCompare/barCompareは使用禁止。"
     },
     {
-      "condition": "時系列・手順・プロセスがある",
-      "prefer": ["timeline", "process", "processList", "flowChart"]
+      "condition": "2つの対象を定性的に比較する（メリット/デメリット等、数値なし）",
+      "prefer": ["compare"]
+    },
+    {
+      "condition": "数値トレンド・時系列推移がある",
+      "prefer": ["imageText"],
+      "note": "数値の時系列変化はimageText+SVGチャートJSON(line/multi-line)で表現。timeline型での数値トレンド表示は禁止。"
+    },
+    {
+      "condition": "手順・プロセス・フロー（数値なし）がある",
+      "prefer": ["process", "processList", "flowChart"]
+    },
+    {
+      "condition": "年表・マイルストーン一覧（数値なし）がある",
+      "prefer": ["timeline"]
     },
     {
       "condition": "階層・成熟度・段階構造がある",
@@ -273,32 +290,12 @@
       }
     },
     "statsCompare": {
-      "required": ["type", "title", "leftTitle", "rightTitle", "stats"],
-      "optional": ["subhead", "notes"],
-      "itemShape": {
-        "label": "string",
-        "leftValue": "string",
-        "rightValue": "string",
-        "trend": "up|down|neutral"
-      },
-      "limits": {
-        "recommendedItemsMin": 2,
-        "recommendedItemsMax": 5
-      }
+      "DISABLED": true,
+      "reason": "使用禁止。数値比較はimageText+SVGグラフ(APPENDIX CHART_DESIGNのbarチャートJSON)で代替すること。"
     },
     "barCompare": {
-      "required": ["type", "title", "stats"],
-      "optional": ["subhead", "showTrends", "notes"],
-      "itemShape": {
-        "label": "string",
-        "leftValue": "string",
-        "rightValue": "string",
-        "trend": "up|down|neutral"
-      },
-      "limits": {
-        "recommendedItemsMin": 2,
-        "recommendedItemsMax": 4
-      }
+      "DISABLED": true,
+      "reason": "使用禁止。数値比較はimageText+SVGグラフ(APPENDIX CHART_DESIGNのbarチャートJSON)で代替すること。"
     },
     "triangle": {
       "required": ["type", "title", "items"],

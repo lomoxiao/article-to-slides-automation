@@ -1,16 +1,22 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
+import type { SlideJob } from "../types/jobs.js";
+import {
+  fetchMultipleSourceContent,
+  fetchResearchContent,
+  fetchSourceContent,
+  type MergedSourceContent
+} from "./contentFetcher.js";
+import { runCodexForSlideJob } from "./codexRunner.js";
 import { createSlidesViaGas } from "./gasSlides.js";
-import { fetchSourceContent } from "./contentFetcher.js";
 import {
   getSlideDataPathForJob,
   readSlideJob,
   transitionSlideJob,
   updateSlideJob
 } from "./jobStore.js";
-import { runCodexForSlideJob } from "./codexRunner.js";
 import {
   notifySlackGasSlidesCompleted,
   notifySlackJobFailed
@@ -55,7 +61,7 @@ export async function processSlideJob(
       options.slideDataPath ?? processingJob.slideDataPath ?? path.join(processingDir, "slideData.json");
 
     if (!existsSync(plannedSlideDataPath)) {
-      const prepared = await prepareSlideDataGeneration(processingJob.id, processingJob.url, processingDir, plannedSlideDataPath);
+      const prepared = await prepareSlideDataGeneration(processingJob, processingDir, plannedSlideDataPath);
       await updateSlideJob(processingJob, processingDir, {
         slideDataPath: prepared.slideDataPath
       });
@@ -150,20 +156,42 @@ export async function processSlideJob(
   }
 }
 
-async function prepareSlideDataGeneration(jobId: string, url: string, processingDir: string, slideDataPath: string) {
-  const source = await fetchSourceContent(url);
+async function prepareSlideDataGeneration(job: SlideJob, processingDir: string, slideDataPath: string) {
+  const content = await fetchContentForJob(job);
   const sourcePath = path.join(processingDir, "source.txt");
   const promptPath = path.join(processingDir, "codex-prompt.md");
 
   await mkdir(processingDir, { recursive: true });
-  await writeFile(sourcePath, source.text, "utf8");
-  await writeFile(promptPath, createCodexPrompt(jobId, url, source.title, sourcePath, slideDataPath), "utf8");
+  await writeFile(sourcePath, content.mergedBody, "utf8");
+  await writeFile(promptPath, createCodexPrompt(job, content, sourcePath, slideDataPath), "utf8");
 
   return {
     promptPath,
     sourcePath,
     slideDataPath
   };
+}
+
+async function fetchContentForJob(job: SlideJob): Promise<MergedSourceContent> {
+  const urls = job.urls ?? (job.url ? [job.url] : undefined);
+
+  if (job.researchPrompt) {
+    return fetchResearchContent(job.researchPrompt);
+  }
+
+  if (urls && urls.length > 1) {
+    return fetchMultipleSourceContent(urls);
+  }
+
+  if (urls?.[0]) {
+    const source = await fetchSourceContent(urls[0]);
+    return {
+      sources: [{ url: source.url, title: source.title, body: source.text }],
+      mergedBody: source.text
+    };
+  }
+
+  throw new Error("URL またはリサーチプロンプトを指定してください");
 }
 
 async function readSlideData(slideDataPath: string): Promise<unknown[]> {
@@ -180,12 +208,66 @@ async function readSlideData(slideDataPath: string): Promise<unknown[]> {
   return slideData;
 }
 
-function createCodexPrompt(jobId: string, url: string, title: string, sourcePath: string, slideDataPath: string) {
+const CHART_KEYWORDS = /グラフ|チャート|chart|graph|縦棒|横棒|折れ線|折線|棒グラフ|円グラフ|ドーナツ|donut|bar|line/i;
+
+function buildChartOverride(focus: string | undefined): string {
+  if (!focus || !CHART_KEYWORDS.test(focus)) {
+    return "";
+  }
+
+  return `
+⚠️ CHART_OVERRIDE — この指示はテンプレート・config の全ルールより最優先で適用すること:
+
+【禁止型】このジョブでは以下の型を一切使用してはならない:
+  kpi / progress / timeline / statsCompare / barCompare
+
+【必須ルール】数値・時系列・比較・割合データは全て type:"imageText" + 下記チャートJSON で表現すること:
+  - 時系列データ（年次・月次・四半期推移）→ chartType:"line" または "multi-line"
+  - 数値の大小比較・カテゴリ別数値       → chartType:"bar" または "stacked-bar"
+  - 構成比・割合データ                    → chartType:"donut"
+
+【枚数ルール】スライド全体の30%以上（最低3枚）を type:"imageText" + チャートJSON にすること。
+  数値が記事に明示されていない場合も、文脈から読み取れる相対的な大小関係を数値化して使用してよい。
+
+【チャートJSON最小サンプル — imageText の image フィールドにこの形式のオブジェクトを入れること】
+
+縦棒グラフ (bar):
+{"chartType":"bar","data":{"title":"タイトル","subtitle":"サブタイトル","source":"出所","xKey":"label","yLabel":"単位","bars":[{"key":"value","label":"系列名","colorId":"A"}],"items":[{"label":"カテゴリA","value":120},{"label":"カテゴリB","value":85},{"label":"カテゴリC","value":200}]}}
+
+折線グラフ (line):
+{"chartType":"line","data":{"title":"タイトル","subtitle":"サブタイトル","source":"出所","xKey":"label","yLabel":"単位","lines":[{"key":"value","label":"系列名","colorId":"A"}],"items":[{"label":"2021","value":40},{"label":"2022","value":65},{"label":"2023","value":110},{"label":"2024","value":180}]}}
+
+ドーナツグラフ (donut):
+{"chartType":"donut","data":{"title":"タイトル","subtitle":"サブタイトル","source":"出所","centerLabel":"合計","colors":[{"id":"A","start":"#e68a9c","end":"#d96d8f"},{"id":"B","start":"#b469b8","end":"#a656ad"},{"id":"C","start":"#7c6ce8","end":"#6b5ce0"}],"items":[{"label":"項目A","value":60,"id":"A"},{"label":"項目B","value":25,"id":"B"},{"label":"項目C","value":15,"id":"C"}]}}
+
+実際の記事データで data の中身を差し替えて使用すること。colorId は A/B/C/D から選ぶこと。`;
+}
+
+function createCodexPrompt(job: SlideJob, content: MergedSourceContent, sourcePath: string, slideDataPath: string) {
+  const primarySource = content.sources[0];
+  const optionLines = [
+    job.researchPrompt ? `Research prompt: ${job.researchPrompt}` : undefined,
+    job.audience ? `Target audience: ${job.audience}` : undefined,
+    job.focus ? `Focus: ${job.focus}` : undefined,
+    job.pages ? `Target slide count: about ${job.pages} slides` : undefined,
+    content.sources.length > 1 ? "Add a final sources slide listing each source title and URL." : undefined
+  ].filter((line): line is string => Boolean(line));
+  const sources = content.sources
+    .map((source, index) => `${index + 1}. ${source.title}\n   ${source.url}`)
+    .join("\n");
+
+  const chartOverride = buildChartOverride(job.focus);
+
   return `# Codex slideData generation task
 
-Job ID: ${jobId}
-URL: ${url}
-Title: ${title}
+Job ID: ${job.id}
+URL: ${primarySource?.url ?? "research"}
+Title: ${primarySource?.title ?? job.researchPrompt ?? "Research summary"}
+
+${optionLines.join("\n")}
+
+Sources:
+${sources}
 
 Read the source text at ${sourcePath} and generate a high-quality Japanese slideData JSON array.
 
@@ -202,5 +284,5 @@ Requirements:
 - Output a JSON array only
 - Save the final JSON to ${slideDataPath}
 - Do not call metered LLM APIs from Node.js
-`;
+${chartOverride}`;
 }

@@ -16,6 +16,11 @@ export async function createPendingSlideJob(input: CreateSlideJobInput): Promise
   const job: SlideJob = {
     id,
     url: input.url,
+    urls: input.urls,
+    researchPrompt: input.researchPrompt,
+    audience: input.audience,
+    focus: input.focus,
+    pages: input.pages,
     requestedBy: input.requestedBy,
     sourceChannelId: input.sourceChannelId,
     status: "pending",

@@ -56,6 +56,8 @@ async function createSelfContainedPrompt(prompt: string, input: RunCodexForJobIn
     readFile(templatePath, "utf8")
   ]);
 
+  const chartOverrideSection = extractChartOverrideSection(task);
+
   return `${prompt}
 
 The shell tool may be unavailable. Do not try to read files or run shell commands.
@@ -79,7 +81,21 @@ ${outputConfig}
 <template path="${templatePath}">
 ${template}
 </template>
-`;
+${chartOverrideSection ? `
+## ⚠️ FINAL MANDATORY OVERRIDE — 上記テンプレート・config より最優先で適用すること
+
+${chartOverrideSection}
+
+上記の禁止型・必須ルールはテンプレートより強く、最終的な出力を決定する。
+JSON 配列を出力する前に、禁止型を使用していないか必ず確認すること。
+` : ""}`;
+}
+
+function extractChartOverrideSection(task: string): string {
+  const marker = "⚠️ CHART_OVERRIDE";
+  const idx = task.indexOf(marker);
+  if (idx === -1) return "";
+  return task.slice(idx).trim();
 }
 
 async function runCodexExec(prompt: string, jobDir: string): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {

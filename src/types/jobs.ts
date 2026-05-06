@@ -2,7 +2,12 @@ export type SlideJobStatus = "pending" | "processing" | "completed" | "failed";
 
 export type SlideJob = {
   id: string;
-  url: string;
+  url?: string;
+  urls?: string[];
+  researchPrompt?: string;
+  audience?: string;
+  focus?: string;
+  pages?: number;
   requestedBy?: string;
   sourceChannelId?: string;
   status: SlideJobStatus;
@@ -18,7 +23,12 @@ export type SlideJob = {
 };
 
 export type CreateSlideJobInput = {
-  url: string;
+  url?: string;
+  urls?: string[];
+  researchPrompt?: string;
+  audience?: string;
+  focus?: string;
+  pages?: number;
   requestedBy?: string;
   sourceChannelId?: string;
 };

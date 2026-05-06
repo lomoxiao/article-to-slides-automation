@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { processSlideJob } from "../services/slideJobProcessor.js";
 import { runUrlToGasSlidesWorkflow } from "../workflows/urlToGasSlides.js";
-import { extractFirstUrl } from "../utils/url.js";
+import { parseSlideArgs } from "../utils/parseSlideArgs.js";
 
 type SlackSlashCommandPayload = {
   text?: string;
@@ -12,23 +12,35 @@ type SlackSlashCommandPayload = {
 
 export async function registerSlackRoutes(app: FastifyInstance) {
   app.post<{ Body: SlackSlashCommandPayload }>("/slack/commands/slides", async (request, reply) => {
-    const url = extractFirstUrl(request.body.text ?? "");
+    const slideArgs = parseSlideArgs(request.body.text ?? "");
 
-    if (!url) {
+    if (!slideArgs.ok) {
       return reply.send({
         response_type: "ephemeral",
-        text: "URLを見つけられませんでした。`/slides https://example.com/article` の形式で送ってください。"
+        text: slideArgs.errorMessage
       });
     }
 
     const job = await runUrlToGasSlidesWorkflow({
-      url,
+      urls: slideArgs.urls,
+      researchPrompt: slideArgs.researchPrompt,
+      audience: slideArgs.audience,
+      focus: slideArgs.focus,
+      pages: slideArgs.pages,
       requestedBy: request.body.user_id,
       sourceChannelId: request.body.channel_id
     });
 
     processSlideJob(job.id).catch((error) => {
-      request.log.error({ error, url, jobId: job.id }, "Automatic URL to GAS slides workflow failed");
+      request.log.error(
+        {
+          error,
+          urls: slideArgs.urls,
+          researchPrompt: slideArgs.researchPrompt,
+          jobId: job.id
+        },
+        "Automatic URL to GAS slides workflow failed"
+      );
     });
 
     return reply.send({

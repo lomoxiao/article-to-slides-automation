@@ -32,7 +32,8 @@ const envSchema = z.object({
   GOOGLE_OAUTH_TOKEN: z.string().default("./google-oauth-token.json"),
   GOOGLE_DRIVE_FOLDER_ID: z.string().optional(),
   GOOGLE_SLIDES_TEMPLATE_ID: z.string().optional(),
-  GAS_WEB_APP_URL: z.string().optional()
+  GAS_WEB_APP_URL: z.string().optional(),
+  TAVILY_API_KEY: z.string().optional()
 });
 
 export const config = envSchema.parse(process.env);

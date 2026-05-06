@@ -42,17 +42,16 @@
      **【最優先】専門パターンの積極活用**
      1. **アジェンダ・目次が必要な場合**: `agenda` を必須選択（章が2つ以上ある場合は必ず生成）
      2. **数値・データが含まれる場合**: 以下の基準で最適パターンを選択
-        * **2つの選択肢・対象の比較** (Before/After、A社vs B社、メリット/デメリット等) → `statsCompare` または `barCompare`
-          - `statsCompare`: テーブル形式で数値を左右に並べて比較（項目数：2〜5項目推奨）
-          - `barCompare`: 横棒グラフで視覚的に数値の大小を比較（項目数：2〜4項目推奨）
-        * **主要指標の一覧表示** (売上、利益率、達成率等の重要指標) → `kpi`（2〜8個のカード型表示）
-        * **進捗・達成度の表示** (タスク進捗、目標達成率等) → `progress`（パーセンテージバー表示、最大5項目）
-        * **時系列推移・トレンド分析** (月次売上推移、成長曲線等) → SVGグラフ（折れ線グラフ、複合グラフ）
-        * **構成比・割合の表示** (市場シェア、予算配分等) → SVGグラフ（ドーナツグラフ）
-        * **カテゴリ別の数量比較** (複数項目の値を比較) → SVGグラフ（棒グラフ、積み上げ棒グラフ）
-        * **複雑なデータの可視化** (3系列以上のデータ、10個以上のデータポイント) → SVGグラフ
-     3. **時系列・手順・プロセスが含まれる場合**: `timeline`, `process`, `processList`, `flowChart` を優先選択
-     4. **比較・対比要素が含まれる場合**: `compare`, `statsCompare`, `barCompare` を優先選択
+        * **2つの選択肢・対象の数値比較** (Before/After、A社vs B社等) → SVGグラフ（棒グラフ `bar` を使用。`imageText` の `image` フィールドにチャートJSONオブジェクトを入力）
+        * **主要指標の一覧表示** (売上、利益率、達成率等の重要指標) → SVGグラフ（棒グラフ `bar`。`imageText` の `image` フィールドにチャートJSONオブジェクトを入力）⚠️ `kpi` 型での代替は禁止
+        * **進捗・達成度の表示** (タスク進捗、目標達成率等) → SVGグラフ（棒グラフ `bar` または `stacked-bar`。`imageText` の `image` フィールドにチャートJSONオブジェクトを入力）⚠️ `progress` 型での代替は禁止
+        * **時系列推移・トレンド分析** (月次売上推移、成長曲線等) → SVGグラフ（折れ線グラフ `multi-line` または `line`。`imageText` の `image` フィールドにチャートJSONオブジェクトを入力）
+        * **構成比・割合の表示** (市場シェア、予算配分等) → SVGグラフ（ドーナツグラフ `donut`。`imageText` の `image` フィールドにチャートJSONオブジェクトを入力）
+        * **カテゴリ別の数量比較** (複数項目の値を比較) → SVGグラフ（棒グラフ `bar` または積み上げ棒 `stacked-bar`。`imageText` の `image` フィールドにチャートJSONオブジェクトを入力）
+        * **複雑なデータの可視化** (3系列以上のデータ、10個以上のデータポイント) → SVGグラフ（`imageText` の `image` フィールドにチャートJSONオブジェクトを入力）
+        * ⚠️ **`statsCompare` と `barCompare` は使用禁止。数値比較は必ずSVGグラフ（`imageText` + チャートJSON）で表現すること。**
+     3. **時系列・手順・プロセスが含まれる場合**: 数値推移データは必ずSVGグラフ（`imageText` + `line`/`multi-line` チャートJSON）を使用。手順・プロセスの場合は `process`, `processList`, `flowChart` を優先選択。⚠️ `timeline` 型は年表・マイルストーン一覧（数値なし）に限定し、数値トレンドへの使用は禁止
+     4. **比較・対比要素が含まれる場合**: 数値比較はSVGグラフ（`imageText` + チャートJSON）、定性的な比較（メリット/デメリット等）は `compare` を優先選択
      5. **階層・構造関係が含まれる場合**: `pyramid`, `stepUp`, `triangle` を優先選択
      6. **循環・関係性が含まれる場合**: `cycle`, `triangle`, `diagram` を優先選択
         ※`triangle`選択時：**キーワード・概念の視覚化**に特化。詳細説明が必要なら`headerCards`や`bulletCards`を選択
@@ -66,10 +65,10 @@
      **【必須】パターン多様性の確保**
      - 1つのプレゼンテーションで最低5種類の異なるパターンを使用
      - 同一パターンの連続使用を避ける
-     - 新しい専門パターン（`triangle`, `pyramid`, `stepUp`, `flowChart`, `statsCompare`, `barCompare`等）を積極的に活用
+     - 新しい専門パターン（`triangle`, `pyramid`, `stepUp`, `flowChart`, `imageText`+SVGグラフ等）を積極的に活用
      
      **【画像使用の厳格なルール】**
-     - **テキスト内に明示的に「https://」または「http://」で始まる画像URLが含まれている場合のみ** `imageText` パターンを選択すること
+     - **`imageText` パターンを選択できる条件（いずれか一方を満たすこと）**: ①テキスト内に明示的に「https://」または「http://」で始まる画像URLが含まれている場合、または②SVGグラフ（APPENDIX CHART_DESIGNのチャートJSONオブジェクト）を使用する場合。数値データが存在する場合はSVGグラフを積極的に使用すること。**
      - **動画の内容でスライドを作成する場合、画像のURLの代わりに再生秒数を0.2秒単位で形式はmm:ss.Sで入力**
      - **依頼時に添付された画像をスライドに利用する場合のみ、画像のURLの代わりに画像の内容を文章で30文字程度で入力してください**
      - **グラフが必要な場合には【APPENDIX CHART_DESIGN】で定義されたグラフデザインの中から最適なグラフ形式を1つ選択し、JSON形式のグラフ構成データを適切に変更して、画像のURLの代わりに、オブジェクトとして入力してください。グラフの色については指示が無い限り変更せずデフォルトのカラーを使用してください。**
@@ -81,7 +80,7 @@
    * 聞き手に最適な**説得ライン**（問題解決型、PREP法、時系列など）へ再配列。
 4. **【ステップ4: スライドタイプへのマッピング】**
    * ストーリー要素を **多様な表現パターン**に**戦略的割当**。
-   * 表紙 → `title` / 章扉 → `section`（※背景に**半透明の大きな章番号**を描画） / 本文 → 専門パターン優先選択：`agenda`, `timeline`, `process`, `processList`, `statsCompare`, `barCompare`, `triangle`, `pyramid`, `flowChart`, `stepUp`, `imageText`, `faq`, `quote`, `kpi`, `progress`, `diagram`, `cycle`, `compare` / 汎用パターン補完：`content`, `cards`, `headerCards`, `table`, `bulletCards` / 結び → `closing`
+   * 表紙 → `title` / 章扉 → `section`（※背景に**半透明の大きな章番号**を描画） / 本文 → 専門パターン優先選択：`agenda`, `timeline`, `process`, `processList`, `triangle`, `pyramid`, `flowChart`, `stepUp`, `imageText`（SVGグラフ含む）, `faq`, `quote`, `kpi`, `progress`, `diagram`, `cycle`, `compare` / 汎用パターン補完：`content`, `cards`, `headerCards`, `table`, `bulletCards` / 結び → `closing` ／ ⚠️ `statsCompare`, `barCompare` は使用禁止
    * **セクションスライドの制御**: ユーザー回答で「不要」が選択された場合、`section`タイプのスライドを生成しない。
 5. **【ステップ5: オブジェクトの厳密な生成】**
    * **3.0 スキーマ**と**4.0 ルール**に準拠し、1件ずつ生成。
@@ -150,8 +149,8 @@
 * **kpi**（KPIカード） `{ type: 'kpi', title: '...', subhead?: string, columns?: 2|3|4, items: { label: string, value: string, change: string, status: 'good'|'bad'|'neutral' }[], notes?: '...' }` ※最大4項目（2〜4項目推奨）
 * **bulletCards**（箇条書きカード） `{ type: 'bulletCards', title: '...', subhead?: string, items: { title: string, desc: string }[], notes?: '...' }` ※最大3項目
 * **faq**（よくある質問） `{ type: 'faq', title: '...', subhead?: string, items: { q: string, a: string }[], notes?: '...' }` ※最小1項目、最大4項目
-* **statsCompare**（数値比較） `{ type: 'statsCompare', title: '...', subhead?: string, leftTitle: '...', rightTitle: '...', stats: { label: string, leftValue: string, rightValue: string, trend?: 'up'|'down'|'neutral' }[], notes?: '...' }`
-* **barCompare**（棒グラフ比較） `{ type: 'barCompare', title: '...', subhead?: string, stats: { label: string, leftValue: string, rightValue: string, trend?: 'up'|'down'|'neutral' }[], showTrends?: boolean, notes?: '...' }` ※`showTrends`はデフォルトfalse。純粋な比較ではtrendを付けない
+* ~~**statsCompare**~~ ⚠️ **使用禁止** — 数値比較は `imageText` + SVGグラフ（APPENDIX CHART_DESIGN の `bar` チャートJSON）で代替すること
+* ~~**barCompare**~~ ⚠️ **使用禁止** — 数値比較は `imageText` + SVGグラフ（APPENDIX CHART_DESIGN の `bar` チャートJSON）で代替すること
 * **triangle**（トライアングル図） `{ type: 'triangle', title: '...', subhead?: string, items: { title: string, desc?: string }[], notes?: '...' }` ※itemsは3項目固定（2項目や4項目は不可）。titleは**キーワード・短文**（10-12文字以内推奨）。descは簡潔な補足（15文字以内）。**視覚的インパクト重視**でテキスト過多を避ける
 * **pyramid**（ピラミッド図） `{ type: 'pyramid', title: '...', subhead?: string, levels: { title: string, description: string }[], notes?: '...' }` ※階層構造や段階的レベルの表現に最適。最大4段階、最低3段階。titleは階層名、descriptionは詳細説明。カラーグラデーションで視覚的階層感を演出
 * **flowChart**（フローチャート） `{ type: 'flowChart', title: '...', subhead?: string, flows: { steps: string[] }[], notes?: '...' }` ※左から右への流れを表現。1行または2行の可変レイアウト。flowsは1〜2要素。最低2個、1行最大4個、2行で合計8個まで対応
@@ -163,7 +162,7 @@
   1. `title`（表紙）
   2. `agenda`（アジェンダ、※章が2つ以上のときのみ）
   3. `section`（※ユーザー回答で「不要」が選択された場合は生成しない）
-  4. 本文（専門パターン優先活用：`timeline`/`process`/`processList`/`statsCompare`/`barCompare`/`triangle`/`pyramid`/`flowChart`/`stepUp`/`imageText`/`faq`/`quote`/`kpi`/`progress`/`diagram`/`cycle`/`compare` + 汎用パターン補完：`content`/`cards`/`headerCards`/`table`/`bulletCards` から2〜5枚、多様性重視）
+  4. 本文（専門パターン優先活用：`process`/`processList`/`triangle`/`pyramid`/`flowChart`/`stepUp`/`imageText`（SVGグラフ含む）/`faq`/`quote`/`diagram`/`cycle`/`compare` + 汎用パターン補完：`content`/`cards`/`headerCards`/`table`/`bulletCards` から2〜5枚、多様性重視）⚠️ `statsCompare`/`barCompare`/`kpi`/`progress` は数値データへの使用禁止。数値・指標・推移は必ず `imageText` + SVGチャートJSON で表現すること。`timeline` は数値トレンドへの使用禁止。
   5. （3〜4を章の数だけ繰り返し）
   6. `closing`（結び）
 * **テキスト表現・字数**（最大目安）:
@@ -175,7 +174,7 @@
   * **パターン別文字数上限**（はみ出し防止のための厳守値）:
     * **faq**: `items[].q` 全角28文字以内、`items[].a` 全角45文字以内
     * **stepUp**: `items[].title` 全角10文字以内、`items[].desc` 全角28文字以内
-    * **barCompare/statsCompare/compare**: `label` 全角12文字以内、値フィールドに説明語や単位の長文を入れない
+    * **compare**: `label` 全角12文字以内、値フィールドに説明語や単位の長文を入れない（`barCompare`/`statsCompare` は使用禁止。数値比較はSVGグラフで表現）
     * **triangle**: `items[].title` 10-12文字以内、`items[].desc` 15文字以内
     * **timeline**: `milestones[].label` 30文字以内
     * **cycle**: 1項目あたり20文字程度
@@ -215,7 +214,7 @@
 > * STEP/ステップ: `^\\s*(?:STEP|Step|ステップ)\\s*\\d+[\\.:：\\-、\\s]*`
 > * 記号箇条書き: `^\\s*[・•\\-—▶→⇒≫>]+\\s*`
 ### C. 「メリット／デメリット」等の冗長ラベルの扱い
-* **比較系（`compare`, `statsCompare`, `barCompare`）**では、**左/右タイトル**に「メリット」「デメリット」「長所」「短所」などを置く場合、**各アイテム内に同ラベル（例: `メリット:`）を繰り返さない**。
+* **比較系（`compare`）**では、**左/右タイトル**に「メリット」「デメリット」「長所」「短所」などを置く場合、**各アイテム内に同ラベル（例: `メリット:`）を繰り返さない**。（数値比較には `statsCompare`/`barCompare` は使用禁止。必ずSVGグラフを使用すること）
   例: `leftTitle: "メリット"`, `leftItems: ["24時間提出可能", "書類の一部を省略"]`（←OK）
 * もし列タイトルがメリット/デメリットで**ない**場合は、アイテム先頭にそれらのラベルを**付けないのが既定**。必要性が明確なときのみ使う。
 ### D. 語尾と句読点
