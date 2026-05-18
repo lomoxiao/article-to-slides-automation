@@ -17,7 +17,11 @@ export async function fetchSourceContent(url: string): Promise<SourceContent> {
     throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
   }
 
-  const html = await response.text();
+  const contentType = response.headers.get("content-type") ?? "";
+  const charsetMatch = contentType.match(/charset=([^\s;]+)/i);
+  const charset = charsetMatch?.[1]?.toLowerCase().replace("shift_jis", "shift-jis") ?? "utf-8";
+  const buffer = await response.arrayBuffer();
+  const html = new TextDecoder(charset).decode(buffer);
   const title = extractTitle(html) ?? url;
   const text = stripHtml(html).slice(0, 60_000);
 
@@ -129,10 +133,101 @@ function extractTitle(html: string): string | undefined {
 }
 
 function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+  const cleanedHtml = removeNonContentBlocks(html);
+  const contentHtml = extractPrimaryContentHtml(cleanedHtml);
+
+  return decodeHtmlEntities(contentHtml
     .replace(/<[^>]+>/g, " ")
+  )
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function removeNonContentBlocks(html: string): string {
+  return html.replace(
+    /<(script|style|nav|header|footer|aside|noscript)\b[^>]*>[\s\S]*?<\/\1>/gi,
+    " "
+  );
+}
+
+function extractPrimaryContentHtml(html: string): string {
+  return extractFirstTagContent(html, "article")
+    ?? extractFirstTagContent(html, "main")
+    ?? extractFirstSemanticContainerContent(html)
+    ?? html;
+}
+
+function extractFirstTagContent(html: string, tagName: string): string | undefined {
+  const pattern = new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)<\\/${tagName}>`, "i");
+  return html.match(pattern)?.[1];
+}
+
+function extractFirstSemanticContainerContent(html: string): string | undefined {
+  const semanticContainerPattern = /<(div|section)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = semanticContainerPattern.exec(html)) !== null) {
+    if (attributesContainContentHint(match[2] ?? "")) {
+      return match[3];
+    }
+  }
+
+  return undefined;
+}
+
+function attributesContainContentHint(attributes: string): boolean {
+  const attributePattern = /\b(id|class)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = attributePattern.exec(attributes)) !== null) {
+    const value = match[2] ?? match[3] ?? match[4] ?? "";
+    if (/(content|article|post|entry|body)/i.test(value)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function decodeHtmlEntities(text: string): string {
+  return text.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (entity, value: string) => {
+    const lowerValue = value.toLowerCase();
+
+    if (lowerValue.startsWith("#x")) {
+      return decodeCodePoint(Number.parseInt(lowerValue.slice(2), 16), entity);
+    }
+
+    if (lowerValue.startsWith("#")) {
+      return decodeCodePoint(Number.parseInt(lowerValue.slice(1), 10), entity);
+    }
+
+    switch (lowerValue) {
+      case "amp":
+        return "&";
+      case "lt":
+        return "<";
+      case "gt":
+        return ">";
+      case "quot":
+        return "\"";
+      case "apos":
+        return "'";
+      case "nbsp":
+        return " ";
+      default:
+        return entity;
+    }
+  });
+}
+
+function decodeCodePoint(codePoint: number, fallback: string): string {
+  if (!Number.isInteger(codePoint) || codePoint < 0 || codePoint > 0x10ffff) {
+    return fallback;
+  }
+
+  try {
+    return String.fromCodePoint(codePoint);
+  } catch {
+    return fallback;
+  }
 }
