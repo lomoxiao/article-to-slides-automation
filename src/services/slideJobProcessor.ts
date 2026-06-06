@@ -8,8 +8,9 @@ import {
   fetchResearchContent,
   fetchSourceContent,
   type MergedSourceContent
-} from "./contentFetcher.js";
+} from "./sourceAggregator.js";
 import { runCodexForSlideJob } from "./codexRunner.js";
+import { renderChartImagesInSlideData } from "./chartRenderer.js";
 import { createSlidesViaGas } from "./gasSlides.js";
 import {
   getSlideDataPathForJob,
@@ -92,17 +93,20 @@ export async function processSlideJob(
     const latest = await readSlideJob(jobId);
     const slideDataPath = options.slideDataPath ?? getSlideDataPathForJob(latest.job);
     const slideData = await readSlideData(slideDataPath);
+    const renderedSlideData = await renderChartImagesInSlideData(slideData);
+    const renderedSlideDataPath = path.join(path.dirname(slideDataPath), "slideData.rendered.json");
+    await writeFile(renderedSlideDataPath, `${JSON.stringify(renderedSlideData, null, 2)}\n`, "utf8");
 
-    const result = await createSlidesViaGas(slideData);
+    const result = await createSlidesViaGas(renderedSlideData);
     const deckUrl = result.url;
 
     if (!deckUrl) {
       throw new Error("GAS did not return a deck URL.");
     }
 
-    const finalSlideDataPath = slideDataPath.startsWith(latest.dir)
-      ? path.join(latest.job.completedDir, path.relative(latest.dir, slideDataPath))
-      : slideDataPath;
+    const finalSlideDataPath = renderedSlideDataPath.startsWith(latest.dir)
+      ? path.join(latest.job.completedDir, path.relative(latest.dir, renderedSlideDataPath))
+      : renderedSlideDataPath;
 
     const { job: completedJob } = await transitionSlideJob(latest.job, latest.dir, "completed", {
       slideDataPath: finalSlideDataPath,
@@ -216,33 +220,35 @@ function buildChartOverride(focus: string | undefined): string {
   }
 
   return `
-⚠️ CHART_OVERRIDE — この指示はテンプレート・config の全ルールより最優先で適用すること:
+CHART_OVERRIDE: This instruction has priority when the focus asks for graphs/charts.
 
-【禁止型】このジョブでは以下の型を一切使用してはならない:
+Do not use these slide types in this job:
   kpi / progress / timeline / statsCompare / barCompare
 
-【必須ルール】数値・時系列・比較・割合データは全て type:"imageText" + 下記チャートJSON で表現すること:
-  - 時系列データ（年次・月次・四半期推移）→ chartType:"line" または "multi-line"
-  - 数値の大小比較・カテゴリ別数値       → chartType:"bar" または "stacked-bar"
-  - 構成比・割合データ                    → chartType:"donut"
+Use type:"imageText" and put one of the following Majin v4 chart JSON objects in the image field.
+Do not add keys that are not shown in the selected sample. The definitions in templates/auto-slides-template.md are authoritative.
 
-【枚数ルール】スライド全体の30%以上（最低3枚）を type:"imageText" + チャートJSON にすること。
-  数値が記事に明示されていない場合も、文脈から読み取れる相対的な大小関係を数値化して使用してよい。
+Chart choice:
+  - Time-series trend: chartType:"line" for one series, or "multi-line" for multiple series.
+  - Category comparison: chartType:"bar" for one series, or "stacked-bar" for stacked values.
+  - Share/composition: chartType:"donut".
 
-【チャートJSON最小サンプル — imageText の image フィールドにこの形式のオブジェクトを入れること】
+Use real values inferred from the article/source text. If the source has no exact numbers, use clearly reasonable sample values.
+When the focus asks to use charts often, make at least 30% of the deck (minimum 3 slides) type:"imageText" with chart JSON.
 
-縦棒グラフ (bar):
-{"chartType":"bar","data":{"title":"タイトル","subtitle":"サブタイトル","source":"出所","xKey":"label","yLabel":"単位","bars":[{"key":"value","label":"系列名","colorId":"A"}],"items":[{"label":"カテゴリA","value":120},{"label":"カテゴリB","value":85},{"label":"カテゴリC","value":200}]}}
+Single-series bar chart:
+{"chartType":"bar","data":{"title":"Category comparison","subtitle":"Sample values","source":"Source","items":[{"label":"Category A","value":120},{"label":"Category B","value":85},{"label":"Category C","value":200}],"color":{"start":"#e68a9c","end":"#9f63d0"},"layout":{"width":600,"height":450,"marginTop":100,"marginBottom":65,"marginLeft":70,"marginRight":40},"barOptions":{"barToSlotRatio":0.6},"yAxis":{"max":220,"min":0,"tickCount":4,"unit":""}}}
 
-折線グラフ (line):
-{"chartType":"line","data":{"title":"タイトル","subtitle":"サブタイトル","source":"出所","xKey":"label","yLabel":"単位","lines":[{"key":"value","label":"系列名","colorId":"A"}],"items":[{"label":"2021","value":40},{"label":"2022","value":65},{"label":"2023","value":110},{"label":"2024","value":180}]}}
+Single-series line chart:
+{"chartType":"line","data":{"title":"Trend over time","subtitle":"Sample values","source":"Source","yAxisUnitLabel":"units","items":[{"label":"2021","value":40},{"label":"2022","value":65},{"label":"2023","value":110},{"label":"2024","value":180}],"color":{"start":"#e68a9c","end":"#b469b8","line":"#b469b8","label":"#8c4fc8"},"layout":{"width":600,"height":465,"marginTop":100,"marginBottom":85,"marginLeft":75,"marginRight":25},"yAxis":{"max":200,"min":0,"tickCount":4},"lineOptions":{"markerRadius":5,"dataLabelOffsetY":15,"horizontalPadding":30}}}
 
-ドーナツグラフ (donut):
-{"chartType":"donut","data":{"title":"タイトル","subtitle":"サブタイトル","source":"出所","centerLabel":"合計","colors":[{"id":"A","start":"#e68a9c","end":"#d96d8f"},{"id":"B","start":"#b469b8","end":"#a656ad"},{"id":"C","start":"#7c6ce8","end":"#6b5ce0"}],"items":[{"label":"項目A","value":60,"id":"A"},{"label":"項目B","value":25,"id":"B"},{"label":"項目C","value":15,"id":"C"}]}}
+Donut chart:
+{"chartType":"donut","data":{"title":"Composition","subtitle":"Sample values","source":"Source","centerLabel":"Total","colors":[{"id":"A","start":"#e68a9c","end":"#d96d8f"},{"id":"B","start":"#b469b8","end":"#a656ad"},{"id":"C","start":"#7c6ce8","end":"#6b5ce0"}],"items":[{"label":"Item A","value":60,"id":"A"},{"label":"Item B","value":25,"id":"B"},{"label":"Item C","value":15,"id":"C"}]}}
 
-実際の記事データで data の中身を差し替えて使用すること。colorId は A/B/C/D から選ぶこと。`;
+For donut charts, every items[].id must match one colors[].id.
+For bar and line charts, use items[].label and items[].value only; do not use xKey/yLabel/bars/lines.
+`;
 }
-
 function createCodexPrompt(job: SlideJob, content: MergedSourceContent, sourcePath: string, slideDataPath: string) {
   const primarySource = content.sources[0];
   const optionLines = [

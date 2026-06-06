@@ -3,7 +3,7 @@ import {
   fetchResearchContent,
   fetchSourceContent,
   type MergedSourceContent
-} from "../services/contentFetcher.js";
+} from "../services/sourceAggregator.js";
 import { createGoogleSlidesDeck } from "../services/googleSlides.js";
 import { notifySlack } from "../services/slackNotifier.js";
 import { summarizeForSlides } from "../services/summarizer.js";

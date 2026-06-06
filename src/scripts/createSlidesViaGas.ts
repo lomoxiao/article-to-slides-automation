@@ -1,5 +1,7 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { createSlidesViaGas } from "../services/gasSlides.js";
+import { renderChartImagesInSlideData } from "../services/chartRenderer.js";
 
 const slideDataPath = process.argv[2];
 
@@ -14,4 +16,8 @@ if (!Array.isArray(slideData)) {
   throw new Error("slideData JSON must be an array.");
 }
 
-console.log(JSON.stringify(await createSlidesViaGas(slideData), null, 2));
+const renderedSlideData = await renderChartImagesInSlideData(slideData);
+const renderedSlideDataPath = path.join(path.dirname(slideDataPath), "slideData.rendered.json");
+await writeFile(renderedSlideDataPath, `${JSON.stringify(renderedSlideData, null, 2)}\n`, "utf8");
+
+console.log(JSON.stringify(await createSlidesViaGas(renderedSlideData), null, 2));

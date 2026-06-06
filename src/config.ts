@@ -1,4 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { z } from "zod";
 
 loadDotEnv();
@@ -23,6 +25,7 @@ const envSchema = z.object({
     ),
   CODEX_RUNNER_HOME: z.string().default("./.codex-runner-home"),
   CODEX_SOURCE_HOME: z.string().optional(),
+  CODEX_MODEL: z.string().default("gpt-5.5"),
   CODEX_EXEC_SANDBOX: z.enum(["read-only", "workspace-write", "danger-full-access"]).default("workspace-write"),
   CODEX_EXEC_FULL_AUTO: z.coerce.boolean().default(true),
   CODEX_EXEC_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
@@ -33,15 +36,30 @@ const envSchema = z.object({
   GOOGLE_DRIVE_FOLDER_ID: z.string().optional(),
   GOOGLE_SLIDES_TEMPLATE_ID: z.string().optional(),
   GAS_WEB_APP_URL: z.string().optional(),
-  TAVILY_API_KEY: z.string().optional()
+  TAVILY_API_KEY: z.string().optional(),
+  YOUTUBE_API_KEY: z.string().optional(),
+  // 空文字(.env に空で残った場合)は未設定とみなし、中立な既定パスを使う。
+  X_SESSION_STATE_PATH: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().default(join(homedir(), ".content-extractor", "x-session.json"))
+  ),
+  X_HEADLESS: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.boolean().default(true)
+  )
 });
 
 export const config = envSchema.parse(process.env);
 
 function loadDotEnv() {
-  try {
-    const envPath = ".env";
+  // ローカル .env を優先し、共有抽出器の資格情報(YOUTUBE_API_KEY 等)は
+  // リポジトリ非依存の中立 .env をフォールバックとして読む(既存値は上書きしない)。
+  applyEnvFile(".env");
+  applyEnvFile(join(homedir(), ".content-extractor", ".env"));
+}
 
+function applyEnvFile(envPath: string) {
+  try {
     if (!existsSync(envPath)) {
       return;
     }

@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config.js";
-import type { MergedSourceContent } from "./contentFetcher.js";
+import type { MergedSourceContent } from "./sourceAggregator.js";
 import type { SlideOutline, SourceContent } from "../types.js";
 
 type SummarizeInput = {

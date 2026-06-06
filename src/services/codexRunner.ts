@@ -105,22 +105,14 @@ async function runCodexExec(prompt: string, jobDir: string): Promise<{ exitCode:
   const lastMessagePath = path.join(jobDir, "codex-last-message.txt");
   await writeFile(promptFilePath, prompt, "utf8");
 
-  if (process.platform === "win32") {
-    return runCodexExecViaPowerShell({
-      command,
-      codexHome,
-      promptFilePath,
-      lastMessagePath,
-      jobDir
-    });
-  }
-
-  return new Promise(async (resolve, reject) => {
+  return new Promise((resolve, reject) => {
     const args = [
       "exec",
       "--skip-git-repo-check",
       "-C",
       process.cwd(),
+      "--model",
+      config.CODEX_MODEL,
       "--output-last-message",
       lastMessagePath,
       "--sandbox",
@@ -144,7 +136,7 @@ async function runCodexExec(prompt: string, jobDir: string): Promise<{ exitCode:
       return;
     }
 
-    child.stdin?.end(prompt);
+    child.stdin?.end(prompt, "utf8");
 
     let stdout = "";
     let stderr = "";
@@ -185,116 +177,6 @@ async function runCodexExec(prompt: string, jobDir: string): Promise<{ exitCode:
       resolve({ exitCode, stdout, stderr });
     });
   });
-}
-
-async function runCodexExecViaPowerShell(input: {
-  command: string;
-  codexHome: string;
-  promptFilePath: string;
-  lastMessagePath: string;
-  jobDir: string;
-}): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
-  const scriptPath = path.join(input.jobDir, "run-codex-exec.ps1");
-  const fullAutoArg = config.CODEX_EXEC_FULL_AUTO ? " --full-auto" : "";
-  const nodeResolvedCommand = isWindowsAppsPath(input.command) ? "" : input.command;
-  const commandSetup = `$codexCommand = ${psSingleQuote(nodeResolvedCommand)}
-if (-not $codexCommand -or ($codexCommand -match '[:\\\\]' -and -not (Test-Path -LiteralPath $codexCommand))) {
-  $codexCommand = (Get-Command codex -ErrorAction SilentlyContinue).Source
-}
-if (-not $codexCommand) {
-  $userCodex = ${psSingleQuote(path.join(homedir(), "AppData", "Local", "OpenAI", "Codex", "bin", "codex.exe"))}
-  if (Test-Path -LiteralPath $userCodex) {
-    $codexCommand = $userCodex
-  }
-}
-if (-not $codexCommand) {
-  $localCodex = Join-Path $env:LOCALAPPDATA 'OpenAI\\Codex\\bin\\codex.exe'
-  if (Test-Path -LiteralPath $localCodex) {
-    $codexCommand = $localCodex
-  }
-}
-if (-not $codexCommand) {
-  throw 'codex command was not found. Set CODEX_CLI_COMMAND to the full codex.exe path.'
-}
-if ($codexCommand -like '*\\WindowsApps\\*') {
-  throw "codex command resolved to a WindowsApps path, which is not supported: $codexCommand"
-}
-Write-Host "Resolved codex command: $codexCommand"`;
-  const script = `$ErrorActionPreference = 'Stop'
-$env:CODEX_HOME = ${psSingleQuote(input.codexHome)}
-${commandSetup}
-$prompt = Get-Content -LiteralPath ${psSingleQuote(input.promptFilePath)} -Raw
-$prompt | & $codexCommand exec --skip-git-repo-check -C ${psSingleQuote(process.cwd())} --output-last-message ${psSingleQuote(input.lastMessagePath)} --sandbox ${psSingleQuote(config.CODEX_EXEC_SANDBOX)}${fullAutoArg} -
-exit $LASTEXITCODE
-`;
-
-  await writeFile(scriptPath, script, "utf8");
-
-  return runChildProcess("powershell.exe", [
-    "-NoProfile",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-File",
-    scriptPath
-  ]);
-}
-
-function runChildProcess(command: string, args: string[]): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    let child;
-    try {
-      child = spawn(command, args, {
-        shell: false,
-        windowsHide: true
-      });
-    } catch (error) {
-      reject(error);
-      return;
-    }
-
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-
-    const timeout = setTimeout(() => {
-      if (settled) {
-        return;
-      }
-      child.kill();
-      settled = true;
-      reject(new Error(`codex exec timed out after ${config.CODEX_EXEC_TIMEOUT_MS}ms`));
-    }, config.CODEX_EXEC_TIMEOUT_MS);
-
-    child.stdout?.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString("utf8");
-    });
-
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
-    });
-
-    child.on("error", (error) => {
-      if (settled) {
-        return;
-      }
-      clearTimeout(timeout);
-      settled = true;
-      reject(error);
-    });
-
-    child.on("close", (exitCode) => {
-      if (settled) {
-        return;
-      }
-      clearTimeout(timeout);
-      settled = true;
-      resolve({ exitCode, stdout, stderr });
-    });
-  });
-}
-
-function psSingleQuote(value: string) {
-  return `'${value.replace(/'/g, "''")}'`;
 }
 
 function extractJsonArray(text: string) {
@@ -332,7 +214,7 @@ async function prepareRunnerCodexHome() {
   await copyIfExists(path.join(sourceHome, "auth.json"), path.join(runnerHome, "auth.json"));
   await copyIfExists(path.join(sourceHome, "config.toml"), path.join(runnerHome, "config.toml"));
   await copyIfExists(path.join(sourceHome, "AGENTS.md"), path.join(runnerHome, "AGENTS.md"));
-  await copyIfExists(resolveExternalCodexCommand(config.CODEX_CLI_COMMAND), path.join(runnerHome, "bin", "codex.exe"));
+  await copyExeIfNeeded(resolveExternalCodexCommand(config.CODEX_CLI_COMMAND), path.join(runnerHome, "bin", "codex.exe"));
 
   return runnerHome;
 }
@@ -343,6 +225,25 @@ async function copyIfExists(source: string, destination: string) {
   }
 
   await copyFile(source, destination);
+}
+
+// codex.exe は起動中にコピーしようとすると EBUSY になるため、
+// コピー先に既に存在する場合はスキップする。
+async function copyExeIfNeeded(source: string, destination: string) {
+  if (!existsSync(source) || existsSync(destination)) {
+    return;
+  }
+
+  try {
+    await copyFile(source, destination);
+  } catch (error: unknown) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EBUSY" || code === "EPERM") {
+      // コピー先が使用中または権限エラー → 既存ファイルをそのまま使用
+      return;
+    }
+    throw error;
+  }
 }
 
 function resolveCodexCommand(command: string) {
@@ -380,8 +281,4 @@ function getUserCodexCandidates() {
     userProfile ? path.join(userProfile, "AppData", "Local", "OpenAI", "Codex", "bin", "codex.exe") : undefined,
     localAppData ? path.join(localAppData, "OpenAI", "Codex", "bin", "codex.exe") : undefined
   ].filter((candidate): candidate is string => Boolean(candidate));
-}
-
-function isWindowsAppsPath(value: string) {
-  return value.toLowerCase().includes("\\windowsapps\\");
 }

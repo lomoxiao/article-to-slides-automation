@@ -18,10 +18,12 @@
   },
   "dependencies": {
     "@fastify/formbody": "^8.0.2",
+    "@local/content-extractor": "github:lomoxiao/content-extractor#v0.1.0",
     "@slack/socket-mode": "^2.0.6",
     "@slack/web-api": "^7.9.3",
     "fastify": "^5.3.2",
     "googleapis": "^148.0.0",
+    "playwright": "^1.59.1",
     "zod": "^3.25.67"
   },
   "devDependencies": {

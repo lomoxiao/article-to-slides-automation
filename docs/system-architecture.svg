@@ -1,0 +1,173 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="860" viewBox="0 0 1280 860" role="img" aria-labelledby="title desc">
+  <title id="title">Article to Slides Automation システム全体図</title>
+  <desc id="desc">Slack からスライド生成依頼を受け、ローカル Node.js サービスがジョブを作成し、Codex CLI と Google Apps Script を経由して Google Slides を生成し、Slack に通知する全体アーキテクチャ。</desc>
+  <defs>
+    <style>
+      .bg { fill: #f6f8fb; }
+      .lane { fill: #ffffff; stroke: #d6dee9; stroke-width: 1.4; }
+      .lane-title { fill: #43546a; font: 700 16px "Segoe UI", "Noto Sans JP", sans-serif; }
+      .box { fill: #ffffff; stroke: #9fb2c8; stroke-width: 1.5; rx: 8; }
+      .box-main { fill: #eaf4ff; stroke: #4f8bc9; }
+      .box-store { fill: #fff8e8; stroke: #d69b31; }
+      .box-external { fill: #eef8ef; stroke: #54a35f; }
+      .box-alt { fill: #f3efff; stroke: #8269c9; }
+      .label { fill: #172033; font: 700 15px "Segoe UI", "Noto Sans JP", sans-serif; }
+      .small { fill: #43546a; font: 12px "Segoe UI", "Noto Sans JP", sans-serif; }
+      .tiny { fill: #5c6c80; font: 11px "Segoe UI", "Noto Sans JP", sans-serif; }
+      .arrow { stroke: #334155; stroke-width: 2.1; fill: none; marker-end: url(#arrow); }
+      .arrow-soft { stroke: #64748b; stroke-width: 1.8; fill: none; marker-end: url(#arrow-soft); stroke-dasharray: 6 5; }
+      .boundary { fill: none; stroke: #cbd5e1; stroke-width: 1.3; stroke-dasharray: 8 6; }
+      .badge { fill: #1f6fb2; }
+      .badge-text { fill: #ffffff; font: 700 11px "Segoe UI", "Noto Sans JP", sans-serif; }
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L9,3 L0,6 Z" fill="#334155" />
+    </marker>
+    <marker id="arrow-soft" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L9,3 L0,6 Z" fill="#64748b" />
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1280" height="860" />
+
+  <text x="40" y="50" fill="#102033" font-family="Segoe UI, Noto Sans JP, sans-serif" font-size="28" font-weight="800">Article to Slides Automation システム全体図</text>
+  <text x="40" y="78" class="small">主経路: Slack 依頼 → Node.js/Fastify → job 作成 → Codex CLI が slideData.json 生成 → GAS/Majin renderer → Google Slides → Slack 通知</text>
+
+  <rect class="lane" x="40" y="115" width="170" height="655" rx="12" />
+  <text x="62" y="145" class="lane-title">ユーザー / Slack</text>
+
+  <rect class="lane" x="240" y="115" width="275" height="655" rx="12" />
+  <text x="262" y="145" class="lane-title">ローカル Node.js サービス</text>
+
+  <rect class="lane" x="545" y="115" width="240" height="655" rx="12" />
+  <text x="567" y="145" class="lane-title">ジョブ / Codex 実行</text>
+
+  <rect class="lane" x="815" y="115" width="205" height="655" rx="12" />
+  <text x="837" y="145" class="lane-title">GAS / 描画補助</text>
+
+  <rect class="lane" x="1050" y="115" width="190" height="655" rx="12" />
+  <text x="1072" y="145" class="lane-title">Google / 外部</text>
+
+  <rect class="box box-external" x="65" y="185" width="120" height="80" rx="8" />
+  <text x="125" y="215" text-anchor="middle" class="label">Slack</text>
+  <text x="125" y="239" text-anchor="middle" class="small">/slides</text>
+  <text x="125" y="256" text-anchor="middle" class="small">[slide-generate]</text>
+
+  <rect class="box box-main" x="270" y="170" width="210" height="105" rx="8" />
+  <text x="375" y="201" text-anchor="middle" class="label">入口</text>
+  <text x="375" y="225" text-anchor="middle" class="small">src/index.ts</text>
+  <text x="375" y="243" text-anchor="middle" class="small">Fastify + Socket Mode</text>
+  <text x="375" y="261" text-anchor="middle" class="tiny">HTTP route は token 未設定時</text>
+
+  <rect class="box" x="270" y="315" width="210" height="100" rx="8" />
+  <text x="375" y="346" text-anchor="middle" class="label">Slack 受付</text>
+  <text x="375" y="370" text-anchor="middle" class="small">socketModeClient.ts</text>
+  <text x="375" y="388" text-anchor="middle" class="small">routes/slack.ts</text>
+  <text x="375" y="406" text-anchor="middle" class="tiny">parseSlideArgs で URL/条件を解析</text>
+
+  <rect class="box box-main" x="270" y="455" width="210" height="88" rx="8" />
+  <text x="375" y="487" text-anchor="middle" class="label">ワークフロー</text>
+  <text x="375" y="512" text-anchor="middle" class="small">urlToGasSlides.ts</text>
+  <text x="375" y="530" text-anchor="middle" class="tiny">createPendingSlideJob</text>
+
+  <rect class="box box-store" x="570" y="170" width="190" height="125" rx="8" />
+  <text x="665" y="201" text-anchor="middle" class="label">ジョブストア</text>
+  <text x="665" y="226" text-anchor="middle" class="small">jobs/pending</text>
+  <text x="665" y="244" text-anchor="middle" class="small">jobs/processing</text>
+  <text x="665" y="262" text-anchor="middle" class="small">jobs/completed / failed</text>
+  <text x="665" y="282" text-anchor="middle" class="tiny">job.json と成果物を状態別に保存</text>
+
+  <rect class="box box-main" x="570" y="335" width="190" height="120" rx="8" />
+  <text x="665" y="366" text-anchor="middle" class="label">Slide Job Processor</text>
+  <text x="665" y="391" text-anchor="middle" class="small">slideJobProcessor.ts</text>
+  <text x="665" y="410" text-anchor="middle" class="tiny">contentFetcher で本文取得</text>
+  <text x="665" y="428" text-anchor="middle" class="tiny">source.txt / prompt を作成</text>
+  <text x="665" y="446" text-anchor="middle" class="tiny">完了・失敗通知を制御</text>
+
+  <rect class="box box-store" x="570" y="500" width="190" height="112" rx="8" />
+  <text x="665" y="531" text-anchor="middle" class="label">ジョブ成果物</text>
+  <text x="665" y="555" text-anchor="middle" class="small">source.txt</text>
+  <text x="665" y="573" text-anchor="middle" class="small">codex-prompt.md</text>
+  <text x="665" y="591" text-anchor="middle" class="small">slideData.json</text>
+
+  <rect class="box box-alt" x="570" y="650" width="190" height="90" rx="8" />
+  <text x="665" y="681" text-anchor="middle" class="label">Codex CLI</text>
+  <text x="665" y="706" text-anchor="middle" class="small">codexRunner.ts</text>
+  <text x="665" y="724" text-anchor="middle" class="tiny">テンプレート準拠の JSON を生成</text>
+
+  <rect class="box box-external" x="1075" y="170" width="140" height="95" rx="8" />
+  <text x="1145" y="202" text-anchor="middle" class="label">Web 記事</text>
+  <text x="1145" y="227" text-anchor="middle" class="small">URL HTML</text>
+  <text x="1145" y="245" text-anchor="middle" class="tiny">title / body 抽出</text>
+
+  <rect class="box box-external" x="1075" y="315" width="140" height="90" rx="8" />
+  <text x="1145" y="347" text-anchor="middle" class="label">Tavily</text>
+  <text x="1145" y="372" text-anchor="middle" class="small">researchPrompt</text>
+  <text x="1145" y="390" text-anchor="middle" class="tiny">検索結果を取得</text>
+
+  <rect class="box box-main" x="840" y="475" width="155" height="110" rx="8" />
+  <text x="917.5" y="506" text-anchor="middle" class="label">Chart Renderer</text>
+  <text x="917.5" y="530" text-anchor="middle" class="small">chartRenderer.ts</text>
+  <text x="917.5" y="548" text-anchor="middle" class="tiny">chart JSON を検証</text>
+  <text x="917.5" y="566" text-anchor="middle" class="tiny">SVG → PNG data URL</text>
+
+  <rect class="box box-external" x="840" y="645" width="155" height="95" rx="8" />
+  <text x="917.5" y="676" text-anchor="middle" class="label">GAS Web App</text>
+  <text x="917.5" y="701" text-anchor="middle" class="small">majin adapter</text>
+  <text x="917.5" y="719" text-anchor="middle" class="tiny">slideData をレンダラーへ渡す</text>
+
+  <rect class="box box-external" x="1075" y="645" width="140" height="95" rx="8" />
+  <text x="1145" y="677" text-anchor="middle" class="label">Google Slides</text>
+  <text x="1145" y="702" text-anchor="middle" class="small">Deck URL</text>
+  <text x="1145" y="720" text-anchor="middle" class="tiny">Drive folder へ保存</text>
+
+  <rect class="box box-alt" x="270" y="620" width="210" height="90" rx="8" />
+  <text x="375" y="650" text-anchor="middle" class="label">旧/補助ルート</text>
+  <text x="375" y="674" text-anchor="middle" class="small">urlToSlides.ts</text>
+  <text x="375" y="692" text-anchor="middle" class="tiny">summarizer → googleSlides</text>
+
+  <rect class="boundary" x="555" y="486" width="420" height="270" rx="14" />
+  <text x="575" y="482" class="tiny">ローカル実行環境内で完結する生成前処理</text>
+
+  <path class="arrow" d="M185 225 H270" />
+  <path class="arrow" d="M375 275 V315" />
+  <path class="arrow" d="M375 415 V455" />
+  <path class="arrow" d="M480 499 H570" />
+  <path class="arrow" d="M665 295 V335" />
+  <path class="arrow" d="M665 455 V500" />
+  <path class="arrow" d="M665 612 V650" />
+  <path class="arrow" d="M760 695 H840" />
+  <path class="arrow" d="M760 555 H840" />
+  <path class="arrow" d="M917.5 585 V645" />
+  <path class="arrow" d="M995 692.5 H1075" />
+  <path class="arrow" d="M1145 645 V405" />
+  <path class="arrow" d="M1075 360 H760" />
+  <path class="arrow" d="M1075 218 H760" />
+  <path class="arrow" d="M1075 700 C1035 805, 260 815, 125 265" />
+
+  <path class="arrow-soft" d="M480 665 C530 665, 520 385, 570 385" />
+  <path class="arrow-soft" d="M480 665 C780 610, 870 625, 1075 675" />
+
+  <circle class="badge" cx="226" cy="225" r="13" />
+  <text x="226" y="229" text-anchor="middle" class="badge-text">1</text>
+  <circle class="badge" cx="523" cy="499" r="13" />
+  <text x="523" y="503" text-anchor="middle" class="badge-text">2</text>
+  <circle class="badge" cx="665" cy="635" r="13" />
+  <text x="665" y="639" text-anchor="middle" class="badge-text">3</text>
+  <circle class="badge" cx="804" cy="695" r="13" />
+  <text x="804" y="699" text-anchor="middle" class="badge-text">4</text>
+  <circle class="badge" cx="1036" cy="692" r="13" />
+  <text x="1036" y="696" text-anchor="middle" class="badge-text">5</text>
+  <circle class="badge" cx="1005" cy="786" r="13" />
+  <text x="1005" y="790" text-anchor="middle" class="badge-text">6</text>
+
+  <text x="215" y="206" class="tiny">コマンド/イベント</text>
+  <text x="500" y="488" class="tiny">job 作成</text>
+  <text x="683" y="635" class="tiny">slideData 生成</text>
+  <text x="778" y="682" class="tiny">JSON POST</text>
+  <text x="1010" y="676" class="tiny">Deck 作成</text>
+  <text x="827" y="812" class="tiny">Slack Bot API で完了/失敗通知</text>
+
+  <rect x="40" y="795" width="1200" height="38" rx="8" fill="#ffffff" stroke="#d6dee9" />
+  <text x="58" y="819" class="tiny">設定: .env の SLACK_APP_TOKEN / SLACK_BOT_TOKEN / SLACK_COMPLETION_CHANNEL_ID / GAS_WEB_APP_URL / GOOGLE_DRIVE_FOLDER_ID / TAVILY_API_KEY / CODEX_* が各連携を制御します。</text>
+</svg>

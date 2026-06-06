@@ -49,3 +49,22 @@ npm.cmd run slides:create:gas -- jobs/completed/2026-04-29-quantum-ai/slideData.
 ```
 
 成功すると、GAS が作成した Google Slides の URL が返ります。
+
+## SVG chart prerendering
+
+Majin v4 chart JSON is rendered as an image before it is sent to
+`generateSlidesFromWebApp`. The Node workflow calls the GAS webhook once with
+`action: "convertJsonToSvgBatch"` to reuse the original GAS chart templates,
+then renders the returned dynamic SVG in Playwright Chromium and replaces the
+slide image with `{ info: "chart", data: "data:image/png;base64,..." }`.
+
+Install the browser runtime on each machine that processes slide jobs:
+
+```powershell
+npm.cmd install
+npx playwright install chromium
+```
+
+On Windows, Playwright downloads Chromium under `%LOCALAPPDATA%\ms-playwright`
+by default. If Chromium is missing, job processing fails with an instruction to
+run `npx playwright install chromium`.

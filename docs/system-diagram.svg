@@ -1,0 +1,278 @@
+<svg width="1100" height="900" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', Arial, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+    </marker>
+    <marker id="arr-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+    <marker id="arr-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#9333ea"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1100" height="900" fill="#f8fafc" rx="12"/>
+
+  <!-- Title -->
+  <text x="550" y="32" text-anchor="middle" font-size="16" font-weight="bold" fill="#0f172a">article-to-slides-automation　システム構成図</text>
+
+  <!-- ═══════════════════════════════════════
+       ROW 1: SLACK (y=48–118)
+  ════════════════════════════════════════ -->
+  <rect x="390" y="48" width="320" height="70" rx="10" fill="#4A154B"/>
+  <text x="550" y="73" text-anchor="middle" font-size="13" font-weight="bold" fill="white">Slack（ユーザー入力）</text>
+  <text x="550" y="90" text-anchor="middle" font-size="10" fill="#e9d5ff">/slides URL [--audience X] [--focus Y] [--pages N]</text>
+  <text x="550" y="108" text-anchor="middle" font-size="10" fill="#e9d5ff">[slide-generate] URL　|　メッセージイベント</text>
+
+  <!-- ═══════════════════════════════════════
+       ROW 2: NODE.JS SERVER (y=135–295)
+  ════════════════════════════════════════ -->
+  <rect x="35" y="132" width="1030" height="166" rx="10" fill="#f0f9ff" stroke="#0284c7" stroke-width="1.5"/>
+  <text x="55" y="150" font-size="10" font-weight="bold" fill="#0369a1">⚡ Node.js Fastify Server　(src/index.ts)</text>
+
+  <!-- HTTP Route -->
+  <rect x="55" y="158" width="228" height="126" rx="7" fill="#bfdbfe" stroke="#3b82f6"/>
+  <text x="169" y="178" text-anchor="middle" font-size="11" font-weight="bold" fill="#1e3a8a">HTTP Webhook Route</text>
+  <text x="169" y="194" text-anchor="middle" font-size="9.5" fill="#1e40af">routes/slack.ts</text>
+  <line x1="65" y1="200" x2="273" y2="200" stroke="#3b82f6" stroke-width="0.5" opacity="0.5"/>
+  <text x="169" y="215" text-anchor="middle" font-size="9.5" fill="#374151">POST /slack/commands/slides</text>
+  <text x="169" y="230" text-anchor="middle" font-size="9.5" fill="#374151">Slash command を受信</text>
+  <text x="169" y="245" text-anchor="middle" font-size="9.5" fill="#374151">即時 ACK → 非同期処理</text>
+  <text x="169" y="260" text-anchor="middle" font-size="9" fill="#6b7280">※ SLACK_APP_TOKEN 未設定時に有効</text>
+  <text x="169" y="276" text-anchor="middle" font-size="9" fill="#6b7280">formBody プラグイン使用</text>
+
+  <!-- Socket Mode -->
+  <rect x="300" y="158" width="228" height="126" rx="7" fill="#bfdbfe" stroke="#3b82f6"/>
+  <text x="414" y="178" text-anchor="middle" font-size="11" font-weight="bold" fill="#1e3a8a">Slack Socket Mode</text>
+  <text x="414" y="194" text-anchor="middle" font-size="9.5" fill="#1e40af">socketModeClient.ts</text>
+  <line x1="310" y1="200" x2="518" y2="200" stroke="#3b82f6" stroke-width="0.5" opacity="0.5"/>
+  <text x="414" y="215" text-anchor="middle" font-size="9.5" fill="#374151">slash_commands イベント</text>
+  <text x="414" y="230" text-anchor="middle" font-size="9.5" fill="#374151">message イベント</text>
+  <text x="414" y="245" text-anchor="middle" font-size="9.5" fill="#374151">([slide-generate] プレフィックス)</text>
+  <text x="414" y="260" text-anchor="middle" font-size="9" fill="#6b7280">※ SLACK_APP_TOKEN 設定時に有効</text>
+  <text x="414" y="276" text-anchor="middle" font-size="9" fill="#6b7280">重複処理防止キャッシュ付き</text>
+
+  <!-- parseSlideArgs -->
+  <rect x="550" y="158" width="200" height="80" rx="7" fill="#e0f2fe" stroke="#0284c7"/>
+  <text x="650" y="178" text-anchor="middle" font-size="11" font-weight="bold" fill="#0c4a6e">parseSlideArgs</text>
+  <text x="650" y="194" text-anchor="middle" font-size="9.5" fill="#0369a1">utils/parseSlideArgs.ts</text>
+  <line x1="560" y1="200" x2="740" y2="200" stroke="#0284c7" stroke-width="0.5" opacity="0.5"/>
+  <text x="650" y="215" text-anchor="middle" font-size="9.5" fill="#374151">URL / --research / --audience</text>
+  <text x="650" y="230" text-anchor="middle" font-size="9.5" fill="#374151">--focus / --pages をパース</text>
+
+  <!-- GET /health -->
+  <rect x="775" y="158" width="270" height="80" rx="7" fill="#e0f2fe" stroke="#0284c7"/>
+  <text x="910" y="178" text-anchor="middle" font-size="11" font-weight="bold" fill="#0c4a6e">GET /health</text>
+  <text x="910" y="194" text-anchor="middle" font-size="9.5" fill="#0369a1">ヘルスチェックエンドポイント</text>
+  <line x1="785" y1="200" x2="1035" y2="200" stroke="#0284c7" stroke-width="0.5" opacity="0.5"/>
+  <text x="910" y="215" text-anchor="middle" font-size="9.5" fill="#374151">{ ok: true } を返す</text>
+  <text x="910" y="230" text-anchor="middle" font-size="9.5" fill="#374151">src/index.ts</text>
+
+  <!-- ═══════════════════════════════════════
+       ROW 3: WORKFLOW + JOBSTORE (y=315–405)
+  ════════════════════════════════════════ -->
+
+  <!-- urlToGasSlides -->
+  <rect x="115" y="315" width="290" height="90" rx="7" fill="#fef9c3" stroke="#ca8a04"/>
+  <text x="260" y="337" text-anchor="middle" font-size="11" font-weight="bold" fill="#78350f">urlToGasSlides Workflow</text>
+  <text x="260" y="353" text-anchor="middle" font-size="9.5" fill="#92400e">workflows/urlToGasSlides.ts</text>
+  <line x1="125" y1="359" x2="395" y2="359" stroke="#ca8a04" stroke-width="0.5" opacity="0.5"/>
+  <text x="260" y="373" text-anchor="middle" font-size="9.5" fill="#374151">pending ジョブを作成（JobStore）</text>
+  <text x="260" y="389" text-anchor="middle" font-size="9.5" fill="#374151">非同期で processSlideJob を起動</text>
+
+  <!-- JobStore -->
+  <rect x="430" y="315" width="635" height="90" rx="7" fill="#fef9c3" stroke="#ca8a04"/>
+  <text x="747" y="337" text-anchor="middle" font-size="11" font-weight="bold" fill="#78350f">JobStore　（ローカルファイルシステム）</text>
+  <text x="747" y="353" text-anchor="middle" font-size="9.5" fill="#92400e">services/jobStore.ts</text>
+  <line x1="440" y1="359" x2="1055" y2="359" stroke="#ca8a04" stroke-width="0.5" opacity="0.5"/>
+  <text x="747" y="373" text-anchor="middle" font-size="9.5" fill="#374151">jobs/pending/　→　jobs/processing/　→　jobs/completed/　または　jobs/failed/</text>
+  <text x="747" y="389" text-anchor="middle" font-size="9.5" fill="#374151">job.json : id, url, status, slideDataPath, deckUrl, presentationId, requestedBy, …</text>
+
+  <!-- ═══════════════════════════════════════
+       ROW 4: SLIDE JOB PROCESSOR (y=422–607)
+  ════════════════════════════════════════ -->
+  <rect x="35" y="420" width="1030" height="190" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="55" y="438" font-size="10" font-weight="bold" fill="#15803d">⚙️ SlideJobProcessor　(services/slideJobProcessor.ts)</text>
+
+  <!-- ContentFetcher -->
+  <rect x="55" y="447" width="186" height="150" rx="7" fill="#bbf7d0" stroke="#16a34a"/>
+  <text x="148" y="467" text-anchor="middle" font-size="11" font-weight="bold" fill="#14532d">ContentFetcher</text>
+  <text x="148" y="482" text-anchor="middle" font-size="9" fill="#166534">contentFetcher.ts</text>
+  <line x1="63" y1="488" x2="233" y2="488" stroke="#16a34a" stroke-width="0.5" opacity="0.5"/>
+  <text x="148" y="503" text-anchor="middle" font-size="9" fill="#374151">単一 URL 取得</text>
+  <text x="148" y="517" text-anchor="middle" font-size="9" fill="#374151">複数 URL 並列取得</text>
+  <text x="148" y="531" text-anchor="middle" font-size="9" fill="#374151">Tavily リサーチ検索</text>
+  <text x="148" y="545" text-anchor="middle" font-size="9" fill="#374151">HTML → テキスト抽出</text>
+  <text x="148" y="559" text-anchor="middle" font-size="9" fill="#374151">（60,000 文字上限）</text>
+  <text x="148" y="574" text-anchor="middle" font-size="9" fill="#374151">→ source.txt 保存</text>
+
+  <!-- CodexRunner -->
+  <rect x="253" y="447" width="186" height="150" rx="7" fill="#bbf7d0" stroke="#16a34a"/>
+  <text x="346" y="467" text-anchor="middle" font-size="11" font-weight="bold" fill="#14532d">CodexRunner</text>
+  <text x="346" y="482" text-anchor="middle" font-size="9" fill="#166534">codexRunner.ts</text>
+  <line x1="261" y1="488" x2="431" y2="488" stroke="#16a34a" stroke-width="0.5" opacity="0.5"/>
+  <text x="346" y="503" text-anchor="middle" font-size="9" fill="#374151">codex-prompt.md 生成</text>
+  <text x="346" y="517" text-anchor="middle" font-size="9" fill="#374151">自己完結プロンプト構築</text>
+  <text x="346" y="531" text-anchor="middle" font-size="9" fill="#374151">Codex CLI 起動</text>
+  <text x="346" y="545" text-anchor="middle" font-size="9" fill="#374151">(codex exec --full-auto)</text>
+  <text x="346" y="559" text-anchor="middle" font-size="9" fill="#374151">JSON 配列を抽出・検証</text>
+  <text x="346" y="574" text-anchor="middle" font-size="9" fill="#374151">→ slideData.json 保存</text>
+
+  <!-- ChartRenderer -->
+  <rect x="451" y="447" width="186" height="150" rx="7" fill="#bbf7d0" stroke="#16a34a"/>
+  <text x="544" y="467" text-anchor="middle" font-size="11" font-weight="bold" fill="#14532d">ChartRenderer</text>
+  <text x="544" y="482" text-anchor="middle" font-size="9" fill="#166534">chartRenderer.ts</text>
+  <line x1="459" y1="488" x2="629" y2="488" stroke="#16a34a" stroke-width="0.5" opacity="0.5"/>
+  <text x="544" y="503" text-anchor="middle" font-size="9" fill="#374151">グラフ JSON 検出・検証</text>
+  <text x="544" y="517" text-anchor="middle" font-size="9" fill="#374151">① GAS へ SVG 変換依頼</text>
+  <text x="544" y="531" text-anchor="middle" font-size="9" fill="#374151">② Playwright で PNG 変換</text>
+  <text x="544" y="545" text-anchor="middle" font-size="9" fill="#374151">base64 Data URL 生成</text>
+  <text x="544" y="559" text-anchor="middle" font-size="9" fill="#374151">→ slideData.rendered.json</text>
+  <text x="544" y="574" text-anchor="middle" font-size="9" fill="#374151">bar / line / donut / combo …</text>
+
+  <!-- GasSlides -->
+  <rect x="649" y="447" width="186" height="150" rx="7" fill="#bbf7d0" stroke="#16a34a"/>
+  <text x="742" y="467" text-anchor="middle" font-size="11" font-weight="bold" fill="#14532d">GasSlides</text>
+  <text x="742" y="482" text-anchor="middle" font-size="9" fill="#166534">gasSlides.ts</text>
+  <line x1="657" y1="488" x2="827" y2="488" stroke="#16a34a" stroke-width="0.5" opacity="0.5"/>
+  <text x="742" y="503" text-anchor="middle" font-size="9" fill="#374151">slideData JSON 送信</text>
+  <text x="742" y="517" text-anchor="middle" font-size="9" fill="#374151">GAS Web App に POST</text>
+  <text x="742" y="531" text-anchor="middle" font-size="9" fill="#374151">Google Slides 作成依頼</text>
+  <text x="742" y="545" text-anchor="middle" font-size="9" fill="#374151">Deck URL / presentationId 取得</text>
+  <text x="742" y="559" text-anchor="middle" font-size="9" fill="#374151">タイムアウト : 330 秒</text>
+  <text x="742" y="574" text-anchor="middle" font-size="9" fill="#374151">→ JobStore 更新（completed）</text>
+
+  <!-- SlackNotifier -->
+  <rect x="847" y="447" width="186" height="150" rx="7" fill="#bbf7d0" stroke="#16a34a"/>
+  <text x="940" y="467" text-anchor="middle" font-size="11" font-weight="bold" fill="#14532d">SlackNotifier</text>
+  <text x="940" y="482" text-anchor="middle" font-size="9" fill="#166534">slackNotifier.ts</text>
+  <line x1="855" y1="488" x2="1025" y2="488" stroke="#16a34a" stroke-width="0.5" opacity="0.5"/>
+  <text x="940" y="503" text-anchor="middle" font-size="9" fill="#374151">完了通知（Deck URL 付き）</text>
+  <text x="940" y="517" text-anchor="middle" font-size="9" fill="#374151">エラー通知</text>
+  <text x="940" y="531" text-anchor="middle" font-size="9" fill="#374151">Job ID を含む</text>
+  <text x="940" y="545" text-anchor="middle" font-size="9" fill="#374151">Slack Web API 使用</text>
+  <text x="940" y="559" text-anchor="middle" font-size="9" fill="#374151">失敗しても処理継続</text>
+
+  <!-- ═══════════════════════════════════════
+       ROW 5: EXTERNAL SERVICES (y=630–720)
+  ════════════════════════════════════════ -->
+
+  <!-- Web / Tavily -->
+  <rect x="55" y="630" width="186" height="90" rx="7" fill="#fce7f3" stroke="#db2777"/>
+  <text x="148" y="650" text-anchor="middle" font-size="11" font-weight="bold" fill="#831843">Web / Tavily API</text>
+  <text x="148" y="666" text-anchor="middle" font-size="9.5" fill="#9d174d">記事 HTML 取得</text>
+  <text x="148" y="681" text-anchor="middle" font-size="9.5" fill="#9d174d">Tavily Search（リサーチモード）</text>
+  <text x="148" y="696" text-anchor="middle" font-size="9" fill="#9d174d">api.tavily.com/search　最大 10 件</text>
+  <text x="148" y="711" text-anchor="middle" font-size="9" fill="#9d174d">TAVILY_API_KEY 必要</text>
+
+  <!-- Codex CLI -->
+  <rect x="253" y="630" width="186" height="90" rx="7" fill="#ede9fe" stroke="#7c3aed"/>
+  <text x="346" y="650" text-anchor="middle" font-size="11" font-weight="bold" fill="#4c1d95">OpenAI Codex CLI</text>
+  <text x="346" y="666" text-anchor="middle" font-size="9.5" fill="#5b21b6">codex exec --full-auto</text>
+  <text x="346" y="681" text-anchor="middle" font-size="9.5" fill="#5b21b6">ローカル実行（子プロセス）</text>
+  <text x="346" y="696" text-anchor="middle" font-size="9" fill="#5b21b6">slideData JSON 生成</text>
+  <text x="346" y="711" text-anchor="middle" font-size="9" fill="#5b21b6">サンドボックス実行 / タイムアウト管理</text>
+
+  <!-- GAS Web App (wide) -->
+  <rect x="451" y="630" width="384" height="90" rx="7" fill="#fce7f3" stroke="#db2777"/>
+  <text x="643" y="650" text-anchor="middle" font-size="11" font-weight="bold" fill="#831843">Google Apps Script (GAS) Web App</text>
+  <text x="643" y="666" text-anchor="middle" font-size="9.5" fill="#9d174d">gas/majin-webhook-adapter.gs　|　GAS_WEB_APP_URL</text>
+  <line x1="461" y1="671" x2="825" y2="671" stroke="#db2777" stroke-width="0.5" opacity="0.4"/>
+  <text x="544" y="686" text-anchor="middle" font-size="9.5" fill="#374151">① SVG 変換</text>
+  <text x="742" y="686" text-anchor="middle" font-size="9.5" fill="#374151">② Google Slides 作成</text>
+  <text x="544" y="700" text-anchor="middle" font-size="9" fill="#9d174d">ChartRenderer 用</text>
+  <text x="742" y="700" text-anchor="middle" font-size="9" fill="#9d174d">GasSlides 用</text>
+  <text x="643" y="714" text-anchor="middle" font-size="9" fill="#9d174d">Majin v4 レンダラー / Google Slides API / Drive API</text>
+
+  <!-- Playwright / Chromium -->
+  <rect x="847" y="630" width="186" height="90" rx="7" fill="#ede9fe" stroke="#7c3aed"/>
+  <text x="940" y="650" text-anchor="middle" font-size="11" font-weight="bold" fill="#4c1d95">Playwright / Chromium</text>
+  <text x="940" y="666" text-anchor="middle" font-size="9.5" fill="#5b21b6">ヘッドレスブラウザ（ローカル）</text>
+  <text x="940" y="681" text-anchor="middle" font-size="9.5" fill="#5b21b6">SVG → PNG 変換</text>
+  <text x="940" y="696" text-anchor="middle" font-size="9" fill="#5b21b6">base64 Data URL 出力</text>
+  <text x="940" y="711" text-anchor="middle" font-size="9" fill="#5b21b6">ChartRenderer から呼び出し</text>
+
+  <!-- ═══════════════════════════════════════
+       ROW 6: OUTPUTS (y=745–830)
+  ════════════════════════════════════════ -->
+
+  <!-- Google Slides -->
+  <rect x="370" y="748" width="320" height="82" rx="7" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="530" y="769" text-anchor="middle" font-size="12" font-weight="bold" fill="#1e3a8a">Google Slides / Drive</text>
+  <text x="530" y="786" text-anchor="middle" font-size="10" fill="#1e40af">プレゼンテーション自動作成</text>
+  <text x="530" y="802" text-anchor="middle" font-size="10" fill="#1e40af">Google Drive フォルダに保存</text>
+  <text x="530" y="818" text-anchor="middle" font-size="9.5" fill="#1e40af">設定 : GOOGLE_DRIVE_FOLDER_ID</text>
+
+  <!-- ═══════════════════════════════════════
+       ARROWS
+  ════════════════════════════════════════ -->
+
+  <!-- Slack → Server -->
+  <line x1="550" y1="118" x2="550" y2="132" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Server → urlToGasSlides (from bottom of HTTP Route / Socket Mode area) -->
+  <line x1="260" y1="298" x2="260" y2="315" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- urlToGasSlides → JobStore -->
+  <line x1="405" y1="360" x2="430" y2="360" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- JobStore → SlideJobProcessor -->
+  <line x1="680" y1="405" x2="680" y2="420" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="690" y="415" font-size="8.5" fill="#64748b">processing</text>
+
+  <!-- Pipeline horizontal arrows -->
+  <line x1="241" y1="522" x2="253" y2="522" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+  <line x1="439" y1="522" x2="451" y2="522" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+  <line x1="637" y1="522" x2="649" y2="522" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+  <line x1="835" y1="522" x2="847" y2="522" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <!-- ContentFetcher → Web/Tavily -->
+  <line x1="148" y1="597" x2="148" y2="630" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- CodexRunner → Codex CLI -->
+  <line x1="346" y1="597" x2="346" y2="630" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- ChartRenderer → GAS (SVG conversion) -->
+  <line x1="510" y1="597" x2="510" y2="630" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="468" y="617" font-size="8" fill="#64748b">① SVG変換</text>
+
+  <!-- GasSlides → GAS (slide creation) -->
+  <line x1="742" y1="597" x2="742" y2="630" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="748" y="617" font-size="8" fill="#64748b">② スライド作成</text>
+
+  <!-- ChartRenderer → Playwright (PNG rendering) -->
+  <line x1="637" y1="540" x2="847" y2="540" stroke="#64748b" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+  <text x="742" y="534" text-anchor="middle" font-size="8" fill="#64748b">SVG→PNG</text>
+
+  <!-- GAS → Google Slides -->
+  <line x1="600" y1="720" x2="560" y2="748" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- SlackNotifier return arrow (right side routing back to Slack) -->
+  <path d="M 1033 522 L 1070 522 L 1070 83 L 710 83" stroke="#9333ea" stroke-width="1.5" stroke-dasharray="5,3" fill="none" marker-end="url(#arr-purple)"/>
+  <text x="1075" y="302" text-anchor="middle" font-size="9" fill="#9333ea" transform="rotate(-90, 1075, 302)">完了 / エラー通知</text>
+
+  <!-- ═══════════════════════════════════════
+       LEGEND
+  ════════════════════════════════════════ -->
+  <rect x="35" y="853" width="1030" height="35" rx="7" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="55" y="868" font-size="9" fill="#475569" font-weight="bold">凡例:</text>
+  <rect x="85" y="858" width="14" height="10" rx="2" fill="#bfdbfe" stroke="#3b82f6"/>
+  <text x="103" y="868" font-size="9" fill="#475569">Node.js 内部モジュール</text>
+  <rect x="235" y="858" width="14" height="10" rx="2" fill="#bbf7d0" stroke="#16a34a"/>
+  <text x="253" y="868" font-size="9" fill="#475569">処理パイプライン</text>
+  <rect x="360" y="858" width="14" height="10" rx="2" fill="#fef9c3" stroke="#ca8a04"/>
+  <text x="378" y="868" font-size="9" fill="#475569">ジョブ管理</text>
+  <rect x="455" y="858" width="14" height="10" rx="2" fill="#fce7f3" stroke="#db2777"/>
+  <text x="473" y="868" font-size="9" fill="#475569">外部 API</text>
+  <rect x="535" y="858" width="14" height="10" rx="2" fill="#ede9fe" stroke="#7c3aed"/>
+  <text x="553" y="868" font-size="9" fill="#475569">ローカルツール</text>
+  <rect x="643" y="858" width="14" height="10" rx="2" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="661" y="868" font-size="9" fill="#475569">出力</text>
+  <line x1="700" y1="863" x2="730" y2="863" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="734" y="868" font-size="9" fill="#475569">同期呼び出し</text>
+  <line x1="812" y1="863" x2="842" y2="863" stroke="#9333ea" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr-purple)"/>
+  <text x="846" y="868" font-size="9" fill="#475569">Slack 通知（非同期）</text>
+  <line x1="967" y1="863" x2="997" y2="863" stroke="#64748b" stroke-width="1" stroke-dasharray="3,2" marker-end="url(#arr)"/>
+  <text x="1001" y="868" font-size="9" fill="#475569">内部参照</text>
+</svg>
