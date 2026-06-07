@@ -11,6 +11,8 @@
     "google:oauth:code": "tsx src/scripts/saveGoogleOAuthCode.ts",
     "codex:preflight": "tsx src/scripts/codexPreflight.ts",
     "jobs:process": "tsx src/scripts/processSlideJob.ts",
+    "manga:outline": "tsx src/scripts/articleToMangaOutline.ts",
+    "manga:check": "tsx src/scripts/checkMangaTemplates.ts",
     "slides:create": "tsx src/scripts/createSlidesFromOutline.ts",
     "slides:create:gas": "tsx src/scripts/createSlidesViaGas.ts",
     "start": "node dist/index.js",

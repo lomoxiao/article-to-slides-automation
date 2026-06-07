@@ -29,11 +29,19 @@ const envSchema = z.object({
   CODEX_EXEC_SANDBOX: z.enum(["read-only", "workspace-write", "danger-full-access"]).default("workspace-write"),
   CODEX_EXEC_FULL_AUTO: z.coerce.boolean().default(true),
   CODEX_EXEC_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
+  // Claude Code ヘッドレス(`claude -p`)実行設定。manga アウトライン生成(Step1/Step2)で使用。
+  // ログイン済み CLI のサブスク認証で動く(ANTHROPIC_API_KEY は不要)。
+  CLAUDE_CLI_COMMAND: z.string().default("claude"),
+  CLAUDE_MODEL: z.string().default("opus"),
+  CLAUDE_EXEC_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
   SUMMARY_PROVIDER: z.enum(["codex_job", "manual", "api"]).default("codex_job"),
   GOOGLE_AUTH_MODE: z.enum(["oauth", "service_account"]).default("oauth"),
   GOOGLE_OAUTH_CREDENTIALS: z.string().default("./google-oauth-credentials.json"),
   GOOGLE_OAUTH_TOKEN: z.string().default("./google-oauth-token.json"),
   GOOGLE_DRIVE_FOLDER_ID: z.string().optional(),
+  // manga アウトライン(step1/step2)の Drive アップロード先フォルダ。
+  // 未設定ならアップロードはスキップ。Google ドキュメントに変換して固定名で upsert する。
+  MANGA_DRIVE_FOLDER_ID: z.string().optional(),
   GOOGLE_SLIDES_TEMPLATE_ID: z.string().optional(),
   GAS_WEB_APP_URL: z.string().optional(),
   TAVILY_API_KEY: z.string().optional(),
