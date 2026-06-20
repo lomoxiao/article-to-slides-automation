@@ -239,6 +239,9 @@ When the focus asks to use charts often, make at least 30% of the deck (minimum 
 Single-series bar chart:
 {"chartType":"bar","data":{"title":"Category comparison","subtitle":"Sample values","source":"Source","items":[{"label":"Category A","value":120},{"label":"Category B","value":85},{"label":"Category C","value":200}],"color":{"start":"#e68a9c","end":"#9f63d0"},"layout":{"width":600,"height":450,"marginTop":100,"marginBottom":65,"marginLeft":70,"marginRight":40},"barOptions":{"barToSlotRatio":0.6},"yAxis":{"max":220,"min":0,"tickCount":4,"unit":""}}}
 
+Stacked bar chart:
+{"chartType":"stacked-bar","data":{"title":"Stacked comparison","subtitle":"Sample values","source":"Source","yAxisUnitLabel":"units","colors":[{"id":"A","start":"#e68a9c","end":"#d96d8f"},{"id":"B","start":"#b469b8","end":"#a656ad"}],"legendLabels":["Item A","Item B"],"barData":[{"label":"Category A","values":[60,40]},{"label":"Category B","values":[80,55]}],"layout":{"width":600,"height":550,"marginTop":170,"marginBottom":50,"marginLeft":75,"marginRight":50},"barOptions":{"width":50,"cornerRadius":4,"totalLabelOffset":10},"yAxis":{"max":150,"min":0,"tickCount":3}}}
+
 Single-series line chart:
 {"chartType":"line","data":{"title":"Trend over time","subtitle":"Sample values","source":"Source","yAxisUnitLabel":"units","items":[{"label":"2021","value":40},{"label":"2022","value":65},{"label":"2023","value":110},{"label":"2024","value":180}],"color":{"start":"#e68a9c","end":"#b469b8","line":"#b469b8","label":"#8c4fc8"},"layout":{"width":600,"height":465,"marginTop":100,"marginBottom":85,"marginLeft":75,"marginRight":25},"yAxis":{"max":200,"min":0,"tickCount":4},"lineOptions":{"markerRadius":5,"dataLabelOffsetY":15,"horizontalPadding":30}}}
 

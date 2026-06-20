@@ -1,7 +1,6 @@
-import { randomUUID } from "node:crypto";
 import { copyFile, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { runClaudeHeadless } from "./claudeRunner.js";
+import { runCodexPrompt } from "./codexRunner.js";
 import type { MangaJob, MangaTreatment } from "../types/manga.js";
 
 const mangaTemplatesDir = path.resolve("manga-templates");
@@ -15,7 +14,7 @@ const TREATMENT_LABELS: Record<MangaTreatment, string> = {
 };
 
 export type MangaOutlineResult = {
-  step1SessionId: string;
+  codexHomeDir: string;
   step1OutputPath: string;
   step2OutputPath: string;
   uploadDir: string;
@@ -30,7 +29,7 @@ export type GenerateMangaOutlineOptions = {
 
 /**
  * Step1(構成・キャラID属性ブロック・コマ割り)→ Step2(全見開きの詳細ネーム)を
- * Claude ヘッドレスで連続実行し、成果物を jobDir に保存。NotebookLM 投入セットを upload/ に集約する。
+ * Codex CLIで連続実行し、成果物を jobDir に保存。NotebookLM 投入セットを upload/ に集約する。
  */
 export async function generateMangaOutline(
   job: MangaJob,
@@ -44,15 +43,15 @@ export async function generateMangaOutline(
   // キャラクターシート画像をジョブの character-sheets/ に取り込み、ファイル名を Step1 に渡す。
   const characterSheetNames = await importCharacterSheets(job, options.characterSheetPaths ?? []);
 
-  const sessionId = randomUUID();
+  const codexHomeDir = path.join(job.jobDir, ".codex-home");
 
   // --- Step1 ---
   const step1Prompt = buildStep1Prompt(job, step1Template, artStyle, sourceText, characterSheetNames);
-  const step1 = await runClaudeHeadless({
+  const step1 = await runCodexPrompt({
     prompt: step1Prompt,
     jobDir: job.jobDir,
     logLabel: "step1",
-    sessionId
+    codexHome: codexHomeDir
   });
   const step1OutputPath = path.join(job.jobDir, "step1-output.txt");
   await writeFile(step1OutputPath, ensureTrailingNewline(step1.result), "utf8");
@@ -62,12 +61,17 @@ export async function generateMangaOutline(
   const characterSheetMap = parseCharacterSheetMap(step1.result, characterSheetNames);
 
   // --- Step2(同一セッションを継続) ---
-  const step2Prompt = buildStep2Prompt(job, step2Template, artStyle, characterSheetMap);
-  const step2 = await runClaudeHeadless({
+  const step2Prompt = appendStep1OutputToStep2Prompt(
+    buildStep2Prompt(job, step2Template, artStyle, characterSheetMap),
+    step1OutputPath,
+    step1.result
+  );
+  const step2 = await runCodexPrompt({
     prompt: step2Prompt,
     jobDir: job.jobDir,
     logLabel: "step2",
-    resumeSessionId: step1.sessionId || sessionId
+    codexHome: codexHomeDir,
+    resumeLast: true
   });
   const step2OutputPath = path.join(job.jobDir, "step2-output.txt");
   // 先頭にキャラ対応表(Step1 から抽出した確定値)を付与してから保存する。
@@ -86,13 +90,27 @@ export async function generateMangaOutline(
   });
 
   return {
-    step1SessionId: sessionId,
+    codexHomeDir,
     step1OutputPath,
     step2OutputPath,
     uploadDir,
     artStyleName: artStyle.name,
     characterSheets: characterSheetNames
   };
+}
+
+function appendStep1OutputToStep2Prompt(step2Prompt: string, step1OutputPath: string, step1Output: string): string {
+  return `${step2Prompt}
+
+## Step1 output for deterministic continuation
+
+The previous Codex session is resumed for context, but the Step1 artifact below is authoritative.
+Use it as the confirmed source for the Step2 name refinement. Do not ask for confirmation.
+
+<step1_output path="${step1OutputPath}">
+${step1Output}
+</step1_output>
+`;
 }
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
@@ -150,7 +168,7 @@ ${characterSheetNames.map((name) => `- ${name}`).join("\n")}
 参照画像は配置されていません。全キャラを英語タグ方式（\`character_sheet: none\` + 英語タグ）で扱うこと。
 `;
 
-  return `# 実行モード: Claude Code ヘッドレス（自動実行・ステップ1）
+  return `# 実行モード: Codex CLI ヘッドレス（自動実行・ステップ1）
 
 あなたは下記の<指示書ステップ1>に厳密に従って出力するエージェントです。
 次の実行条件を、指示書内の運用前提（NotebookLM 参照・ユーザーへの確認など）より最優先で適用してください。
@@ -202,7 +220,7 @@ ${mapLines}
     : `## キャラクターシート
 参照画像が無いため、@ファイル名の対応表は不要。キャラIDのみで記述する。`;
 
-  return `# 実行モード: Claude Code ヘッドレス（自動実行・ステップ2）
+  return `# 実行モード: Codex CLI ヘッドレス（自動実行・ステップ2）
 
 直前のステップ1の出力（確定ネーム骨子・キャラID属性ブロック・コマ割り設計）を踏まえ、
 下記の<指示書ステップ2>に従って、全見開きの詳細ネームを **1回の応答で全量** 出力してください。

@@ -29,8 +29,8 @@ const envSchema = z.object({
   CODEX_EXEC_SANDBOX: z.enum(["read-only", "workspace-write", "danger-full-access"]).default("workspace-write"),
   CODEX_EXEC_FULL_AUTO: z.coerce.boolean().default(true),
   CODEX_EXEC_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
-  // Claude Code ヘッドレス(`claude -p`)実行設定。manga アウトライン生成(Step1/Step2)で使用。
-  // ログイン済み CLI のサブスク認証で動く(ANTHROPIC_API_KEY は不要)。
+  // Claude Code settings are only used by NotebookLM autosync (`claude --chrome`).
+  // Manga Step1/Step2 generation uses the CODEX_* settings above.
   CLAUDE_CLI_COMMAND: z.string().default("claude"),
   CLAUDE_MODEL: z.string().default("opus"),
   CLAUDE_EXEC_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
@@ -42,6 +42,15 @@ const envSchema = z.object({
   // manga アウトライン(step1/step2)の Drive アップロード先フォルダ。
   // 未設定ならアップロードはスキップ。Google ドキュメントに変換して固定名で upsert する。
   MANGA_DRIVE_FOLDER_ID: z.string().optional(),
+  // Phase3: NotebookLM 自動操作(claude --chrome)。Drive アップロード成功後に
+  // 固定ノートブックの step1/step2 ソースを Drive 同期し、チャットで Step3 をトリガする。
+  // 既定 false(安全側)。有効化するにはホストで Chrome 起動 + Claude in Chrome 拡張接続 +
+  // NotebookLM ログイン維持が必要。
+  MANGA_NOTEBOOKLM_AUTOSYNC: z.coerce.boolean().default(false),
+  // 操作対象の固定ノートブック名。
+  MANGA_NOTEBOOKLM_NAME: z.string().default("漫画Maker"),
+  // チャット応答待ちを含むブラウザ操作の上限時間(生成 step1/step2 とは別枠)。
+  MANGA_NOTEBOOKLM_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
   GOOGLE_SLIDES_TEMPLATE_ID: z.string().optional(),
   GAS_WEB_APP_URL: z.string().optional(),
   TAVILY_API_KEY: z.string().optional(),

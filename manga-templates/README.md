@@ -1,7 +1,7 @@
 # manga-templates — NotebookLM 漫画化フロー用テンプレート資産
 
 `article-to-slides-automation` の manga アウトライン生成（Step1/Step2）と、NotebookLM 投入（Step3）で使う、
-記事ごとに変わらないテンプレート群を置くフォルダです。Claude ヘッドレス（`claude -p`）がここを読み込みます。
+記事ごとに変わらないテンプレート群を置くフォルダです。Codex CLI（`codex exec`）がここを読み込みます。
 
 ## フォルダ構成と配置するファイル（配置マニフェスト）
 

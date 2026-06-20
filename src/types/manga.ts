@@ -20,6 +20,7 @@ export type MangaJob = {
   characterSheets?: string[];
   /** Step1 実行時の claude セッション ID(Step2 はこれを resume して継続する)。 */
   step1SessionId?: string;
+  codexHomeDir?: string;
   step1OutputPath?: string;
   step2OutputPath?: string;
   /** NotebookLM 投入セットを集約したディレクトリ。 */
@@ -28,6 +29,10 @@ export type MangaJob = {
   driveFolderId?: string;
   driveStep1Url?: string;
   driveStep2Url?: string;
+  /** Phase3: NotebookLM 自動操作(claude --chrome)の結果。executed=Step3実行 / skipped=Drive未完了等で非実行 / failed=失敗。 */
+  notebookLmStatus?: "executed" | "skipped" | "failed";
+  /** NotebookLM 操作の説明・失敗理由。 */
+  notebookLmDetail?: string;
   error?: string;
 };
 

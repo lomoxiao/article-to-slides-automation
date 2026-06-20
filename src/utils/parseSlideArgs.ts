@@ -38,6 +38,8 @@ export type SlideArgs =
 // /slides https://example.com  (後方互換)
 // -> { ok: true, urls: ["https://example.com"] }
 
+import { normalizeUrl, readFlagValue, sanitizeTextValue, tokenizeArgs } from "./slackArgTokens.js";
+
 type ParsedOptions = {
   url?: string;
   research?: string;
@@ -46,10 +48,6 @@ type ParsedOptions = {
   pages?: string;
   hasFlag: boolean;
 };
-
-type TokenizeResult =
-  | { ok: true; tokens: string[] }
-  | { ok: false; errorMessage: string };
 
 const urlPattern = /https?:\/\/[^\s<>()]+/i;
 const supportedFlags = new Set(["--url", "--research", "--audience", "--focus", "--pages"]);
@@ -175,21 +173,6 @@ export function parseSlideArgs(text: string): SlideArgs {
   };
 }
 
-function readFlagValue(tokens: string[], flagIndex: number): { value: string; nextIndex: number } {
-  const values: string[] = [];
-  let index = flagIndex + 1;
-
-  while (index < tokens.length && !tokens[index].startsWith("--")) {
-    values.push(tokens[index]);
-    index += 1;
-  }
-
-  return {
-    value: values.join(" ").trim(),
-    nextIndex: index - 1
-  };
-}
-
 function parsePages(value: string | undefined): { ok: true; pages?: number } | { ok: false; errorMessage: string } {
   if (value === undefined) {
     return { ok: true };
@@ -202,61 +185,3 @@ function parsePages(value: string | undefined): { ok: true; pages?: number } | {
   return { ok: true, pages: Number(value) };
 }
 
-function tokenizeArgs(text: string): TokenizeResult {
-  const tokens: string[] = [];
-  let current = "";
-  let inQuote = false;
-  let escaping = false;
-
-  for (const char of text.trim()) {
-    if (escaping) {
-      current += char;
-      escaping = false;
-      continue;
-    }
-
-    if (char === "\\" && inQuote) {
-      escaping = true;
-      continue;
-    }
-
-    if (char === "\"") {
-      inQuote = !inQuote;
-      continue;
-    }
-
-    if (/\s/u.test(char) && !inQuote) {
-      if (current) {
-        tokens.push(current);
-        current = "";
-      }
-      continue;
-    }
-
-    current += char;
-  }
-
-  if (inQuote) {
-    return { ok: false, errorMessage: "ダブルクォートが閉じられていません" };
-  }
-
-  if (current) {
-    tokens.push(current);
-  }
-
-  return { ok: true, tokens };
-}
-
-function normalizeUrl(value: string): string {
-  const slackLink = value.trim().match(/^<((?:https?:\/\/)[^>|]+)(?:\|[^>]*)?>$/);
-  const url = slackLink?.[1] ?? value.trim();
-  return url.replace(/[.,;:!?)}\]>]+$/u, "");
-}
-
-function sanitizeTextValue(value: string): string {
-  return value
-    .replace(/<https?:\/\/[^>|]+\|([^>]*)>/g, "$1")
-    .replace(/<https?:\/\/[^>]+>/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}

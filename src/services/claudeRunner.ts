@@ -66,7 +66,7 @@ export async function runClaudeHeadless(input: RunClaudeInput): Promise<ClaudeRu
   await writeFile(inputPath, input.prompt, "utf8");
 
   try {
-    const { exitCode, stdout, stderr } = await spawnClaude(args, input.prompt);
+    const { exitCode, stdout, stderr } = await spawnClaude(args, input.prompt, config.CLAUDE_EXEC_TIMEOUT_MS);
     await writeFile(stdoutPath, stdout, "utf8");
     await writeFile(stderrPath, stderr, "utf8");
 
@@ -90,14 +90,14 @@ export async function runClaudeHeadless(input: RunClaudeInput): Promise<ClaudeRu
   }
 }
 
-type ClaudeJson = {
+export type ClaudeJson = {
   is_error?: boolean;
   subtype?: string;
   result?: string;
   session_id?: string;
 };
 
-function parseClaudeJson(stdout: string): ClaudeJson {
+export function parseClaudeJson(stdout: string): ClaudeJson {
   const trimmed = stdout.trim();
   try {
     return JSON.parse(trimmed) as ClaudeJson;
@@ -111,9 +111,15 @@ function parseClaudeJson(stdout: string): ClaudeJson {
   }
 }
 
-function spawnClaude(
+/**
+ * `claude` を子プロセスとして起動し、終了コード・stdout・stderr を返す共通ヘルパ。
+ * 生成系(runClaudeHeadless)・ブラウザ操作系(notebookLmSync)で共用する。
+ * タイムアウトは呼び出し側のユースケースごとに渡す。
+ */
+export function spawnClaude(
   args: string[],
-  prompt: string
+  prompt: string,
+  timeoutMs: number
 ): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     let child;
@@ -139,8 +145,8 @@ function spawnClaude(
       if (settled) return;
       settled = true;
       child.kill();
-      reject(new Error(`claude exec timed out after ${config.CLAUDE_EXEC_TIMEOUT_MS}ms`));
-    }, config.CLAUDE_EXEC_TIMEOUT_MS);
+      reject(new Error(`claude exec timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
 
     child.stdout?.on("data", (chunk: Buffer) => {
       stdout += chunk.toString("utf8");

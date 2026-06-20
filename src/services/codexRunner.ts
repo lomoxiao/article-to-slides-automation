@@ -11,6 +11,22 @@ type RunCodexForJobInput = {
   slideDataPath: string;
 };
 
+export type RunCodexPromptInput = {
+  prompt: string;
+  jobDir: string;
+  logLabel: string;
+  codexHome?: string;
+  resumeLast?: boolean;
+};
+
+export type RunCodexPromptResult = {
+  result: string;
+  stdout: string;
+  stderr: string;
+  codexHome: string;
+  lastMessagePath: string;
+};
+
 export async function runCodexForSlideJob(input: RunCodexForJobInput): Promise<void> {
   const prompt = `Read and follow the task file at ${input.promptPath}.
 
@@ -43,6 +59,59 @@ Security constraints:
     await writeFile(runErrorPath, `${message}\n`, "utf8");
     throw error;
   }
+}
+
+export async function runCodexPrompt(input: RunCodexPromptInput): Promise<RunCodexPromptResult> {
+  const prompt = createTextOnlyPrompt(input.prompt);
+  const inputPath = path.join(input.jobDir, `codex-${input.logLabel}-input.md`);
+  const stdoutPath = path.join(input.jobDir, `codex-${input.logLabel}-stdout.log`);
+  const stderrPath = path.join(input.jobDir, `codex-${input.logLabel}-stderr.log`);
+  const lastMessagePath = path.join(input.jobDir, `codex-${input.logLabel}-last-message.txt`);
+
+  try {
+    const result = await runCodexExec(prompt, input.jobDir, {
+      codexHome: input.codexHome,
+      lastMessagePath,
+      promptFilePath: inputPath,
+      resumeLast: input.resumeLast
+    });
+
+    await writeFile(stdoutPath, result.stdout, "utf8");
+    await writeFile(stderrPath, result.stderr, "utf8");
+
+    if (result.exitCode !== 0) {
+      throw new Error(`codex exec failed with exit code ${result.exitCode}. See ${stderrPath}`);
+    }
+
+    const lastMessage = await readFile(lastMessagePath, "utf8");
+    if (!lastMessage.trim()) {
+      throw new Error(`codex returned an empty result. See ${lastMessagePath}`);
+    }
+
+    return {
+      result: lastMessage,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      codexHome: result.codexHome,
+      lastMessagePath
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    await writeFile(path.join(input.jobDir, `codex-${input.logLabel}-error.log`), `${message}\n`, "utf8");
+    throw error;
+  }
+}
+
+function createTextOnlyPrompt(prompt: string) {
+  return `Run this task as a text-only generation task.
+
+Constraints:
+- Do not call shell commands or external tools.
+- Do not edit, create, delete, or inspect files.
+- Use only the information embedded in this prompt and the resumed conversation context.
+- Return only the final requested text. Do not include operational commentary.
+
+${prompt}`;
 }
 
 async function createSelfContainedPrompt(prompt: string, input: RunCodexForJobInput) {
@@ -98,28 +167,51 @@ function extractChartOverrideSection(task: string): string {
   return task.slice(idx).trim();
 }
 
-async function runCodexExec(prompt: string, jobDir: string): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
-  const codexHome = await prepareRunnerCodexHome();
-  const command = resolveCodexCommand(config.CODEX_CLI_COMMAND);
-  const promptFilePath = path.join(jobDir, "codex-exec-input.md");
-  const lastMessagePath = path.join(jobDir, "codex-last-message.txt");
+type RunCodexExecOptions = {
+  codexHome?: string;
+  lastMessagePath?: string;
+  promptFilePath?: string;
+  resumeLast?: boolean;
+};
+
+async function runCodexExec(
+  prompt: string,
+  jobDir: string,
+  options: RunCodexExecOptions = {}
+): Promise<{ exitCode: number | null; stdout: string; stderr: string; codexHome: string }> {
+  const codexHome = await prepareRunnerCodexHome(options.codexHome);
+  const command = resolveCodexCommand(config.CODEX_CLI_COMMAND, codexHome);
+  const promptFilePath = options.promptFilePath ?? path.join(jobDir, "codex-exec-input.md");
+  const lastMessagePath = options.lastMessagePath ?? path.join(jobDir, "codex-last-message.txt");
   await writeFile(promptFilePath, prompt, "utf8");
 
   return new Promise((resolve, reject) => {
-    const args = [
-      "exec",
-      "--skip-git-repo-check",
-      "-C",
-      process.cwd(),
-      "--model",
-      config.CODEX_MODEL,
-      "--output-last-message",
-      lastMessagePath,
-      "--sandbox",
-      config.CODEX_EXEC_SANDBOX,
-      ...(config.CODEX_EXEC_FULL_AUTO ? ["--full-auto"] : []),
-      "-"
-    ];
+    const args = options.resumeLast
+      ? [
+          "exec",
+          "resume",
+          "--last",
+          "--skip-git-repo-check",
+          "--model",
+          config.CODEX_MODEL,
+          "--output-last-message",
+          lastMessagePath,
+          "-"
+        ]
+      : [
+          "exec",
+          "--skip-git-repo-check",
+          "-C",
+          process.cwd(),
+          "--model",
+          config.CODEX_MODEL,
+          "--output-last-message",
+          lastMessagePath,
+          "--sandbox",
+          config.CODEX_EXEC_SANDBOX,
+          ...(config.CODEX_EXEC_FULL_AUTO ? ["--full-auto"] : []),
+          "-"
+        ];
 
     let child;
     try {
@@ -174,7 +266,7 @@ async function runCodexExec(prompt: string, jobDir: string): Promise<{ exitCode:
       }
       clearTimeout(timeout);
       settled = true;
-      resolve({ exitCode, stdout, stderr });
+      resolve({ exitCode, stdout, stderr, codexHome });
     });
   });
 }
@@ -202,8 +294,8 @@ function extractJsonArray(text: string) {
   return `${JSON.stringify(parsed, null, 2)}\n`;
 }
 
-async function prepareRunnerCodexHome() {
-  const runnerHome = path.resolve(config.CODEX_RUNNER_HOME);
+async function prepareRunnerCodexHome(codexHome?: string) {
+  const runnerHome = path.resolve(codexHome ?? config.CODEX_RUNNER_HOME);
   const sourceHome = path.resolve(config.CODEX_SOURCE_HOME ?? process.env.CODEX_HOME ?? path.join(process.env.USERPROFILE ?? "", ".codex"));
 
   await mkdir(runnerHome, { recursive: true });
@@ -246,8 +338,8 @@ async function copyExeIfNeeded(source: string, destination: string) {
   }
 }
 
-function resolveCodexCommand(command: string) {
-  const runnerCodex = path.resolve(config.CODEX_RUNNER_HOME, "bin", "codex.exe");
+function resolveCodexCommand(command: string, codexHome = config.CODEX_RUNNER_HOME) {
+  const runnerCodex = path.resolve(codexHome, "bin", "codex.exe");
   if (process.platform === "win32" && existsSync(runnerCodex)) {
     return runnerCodex;
   }
