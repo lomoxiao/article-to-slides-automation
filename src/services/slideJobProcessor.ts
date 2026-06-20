@@ -18,6 +18,7 @@ import {
   transitionSlideJob,
   updateSlideJob
 } from "./jobStore.js";
+import { upsertSlideArticle } from "./multimodalArticleRegistry.js";
 import {
   notifySlackGasSlidesCompleted,
   notifySlackJobFailed
@@ -115,6 +116,21 @@ export async function processSlideJob(
     });
 
     try {
+      await upsertSlideArticle({
+        originalUrl: getPrimaryJobUrl(completedJob),
+        title: getSlideDataTitle(renderedSlideData) ?? completedJob.focus,
+        headline: getSlideDataHeadline(renderedSlideData) ?? completedJob.focus,
+        slidesStatus: "completed",
+        slidesUrl: deckUrl,
+        presentationId: completedJob.presentationId,
+        updatedAt: completedJob.completedAt ?? completedJob.updatedAt
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`Multimodal article registry update failed: ${message}`);
+    }
+
+    try {
       await notifySlackGasSlidesCompleted({
         channelId: completedJob.sourceChannelId,
         requestedBy: completedJob.requestedBy,
@@ -143,6 +159,21 @@ export async function processSlideJob(
     const { job: failedJob } = await transitionSlideJob(latest.job, latest.dir, "failed", {
       error: fixedMessage
     });
+
+    try {
+      await upsertSlideArticle({
+        originalUrl: getPrimaryJobUrl(failedJob),
+        title: failedJob.focus,
+        headline: failedJob.focus,
+        slidesStatus: "failed",
+        slidesUrl: failedJob.deckUrl,
+        presentationId: failedJob.presentationId,
+        updatedAt: failedJob.updatedAt
+      });
+    } catch (registryError) {
+      const registryMessage = registryError instanceof Error ? registryError.message : String(registryError);
+      logger.warn(`Multimodal article registry update failed: ${registryMessage}`);
+    }
 
     try {
       await notifySlackJobFailed({
@@ -210,6 +241,45 @@ async function readSlideData(slideDataPath: string): Promise<unknown[]> {
   }
 
   return slideData;
+}
+
+function getPrimaryJobUrl(job: SlideJob): string | undefined {
+  return job.urls?.[0] ?? job.url;
+}
+
+function getSlideDataTitle(slideData: unknown[]): string | undefined {
+  for (const slide of slideData) {
+    const title = getStringProperty(slide, "title");
+    if (title) {
+      return title;
+    }
+  }
+  return undefined;
+}
+
+function getSlideDataHeadline(slideData: unknown[]): string | undefined {
+  for (const slide of slideData) {
+    const headline =
+      getStringProperty(slide, "subhead") ??
+      getStringProperty(slide, "subtitle") ??
+      getStringProperty(slide, "notes");
+    if (headline) {
+      return truncateText(headline, 180);
+    }
+  }
+  return undefined;
+}
+
+function getStringProperty(value: unknown, key: string): string | undefined {
+  if (!value || typeof value !== "object" || !(key in value)) {
+    return undefined;
+  }
+  const property = (value as Record<string, unknown>)[key];
+  return typeof property === "string" && property.trim() ? property.trim() : undefined;
+}
+
+function truncateText(value: string, maxLength: number): string {
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
 }
 
 const CHART_KEYWORDS = /グラフ|チャート|chart|graph|縦棒|横棒|折れ線|折線|棒グラフ|円グラフ|ドーナツ|donut|bar|line/i;

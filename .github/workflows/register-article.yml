@@ -1,0 +1,39 @@
+name: Register Article
+
+# Phase 2 spike: iPhone Shortcut -> repository_dispatch -> this workflow ->
+# Firebase admin write. Fire-and-forget; the Shortcut only sees the 204 accept.
+on:
+  repository_dispatch:
+    types: [register-article]
+
+# Only needs to read its own code; the Firebase write uses the service account.
+permissions:
+  contents: read
+
+# Serialise writes to /articles as cheap insurance (admin updates are already
+# field-level, so this mainly guards against odd interleavings).
+concurrency:
+  group: articles-write
+  cancel-in-progress: false
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Register article to Firebase
+        env:
+          ARTICLE_URL: ${{ github.event.client_payload.url }}
+          ARTICLE_TITLE: ${{ github.event.client_payload.title }}
+          ARTICLE_HEADLINE: ${{ github.event.client_payload.headline }}
+          FIREBASE_DATABASE_URL: ${{ vars.FIREBASE_DATABASE_URL }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: npx tsx src/scripts/registerArticleFromDispatch.ts
