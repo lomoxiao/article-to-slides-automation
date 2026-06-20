@@ -34,6 +34,18 @@ type ExistingArticle = {
 };
 
 /**
+ * Current time as a JST (UTC+9) ISO 8601 string with an explicit offset,
+ * e.g. "2026-06-21T02:48:28.000+09:00". `Date.prototype.toISOString` always
+ * emits UTC ("...Z"); we shift the instant by +9h and swap the suffix so the
+ * stored timestamps read as Japan time while staying a valid, sortable ISO
+ * string (every record uses the same offset).
+ */
+function nowJstIso(): string {
+  const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().replace("Z", "+09:00");
+}
+
+/**
  * Register (or refresh) an article in Firebase Realtime Database.
  *
  * Writes ONLY the registration-owned fields via a partial update, so existing
@@ -50,7 +62,7 @@ export async function registerArticle(rawInput: RegisterArticleInput): Promise<R
   const snapshot = await ref.get();
   const existing: ExistingArticle | undefined = snapshot.exists() ? snapshot.val() : undefined;
 
-  const now = new Date().toISOString();
+  const now = nowJstIso();
   const fallbackTitle = getUrlHost(identity.canonicalUrl) || identity.canonicalUrl;
 
   const patch: Record<string, unknown> = {
