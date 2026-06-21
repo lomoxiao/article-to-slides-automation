@@ -53,7 +53,6 @@ const envSchema = z.object({
   MANGA_NOTEBOOKLM_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
   GOOGLE_SLIDES_TEMPLATE_ID: z.string().optional(),
   GAS_WEB_APP_URL: z.string().optional(),
-  MULTIMODAL_ARTICLES_JSON_PATH: z.string().default("../multimodal-article-viewer/articles.json"),
   TAVILY_API_KEY: z.string().optional(),
   YOUTUBE_API_KEY: z.string().optional(),
   // 空文字(.env に空で残った場合)は未設定とみなし、中立な既定パスを使う。

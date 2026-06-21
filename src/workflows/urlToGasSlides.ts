@@ -1,5 +1,5 @@
 import { createPendingSlideJob } from "../services/jobStore.js";
-import { upsertSlideArticle } from "../services/multimodalArticleRegistry.js";
+import { upsertSlideArtifact } from "../services/firebaseArticleStore.js";
 import type { SlideJob } from "../types/jobs.js";
 
 type UrlToGasSlidesInput = {
@@ -18,16 +18,15 @@ export async function runUrlToGasSlidesWorkflow(input: UrlToGasSlidesInput): Pro
   const primaryUrl = job.urls?.[0] ?? job.url;
 
   if (primaryUrl) {
-    await upsertSlideArticle({
+    await upsertSlideArtifact({
       originalUrl: primaryUrl,
       title: input.focus,
       headline: input.focus,
       slidesStatus: "processing",
-      slidesUrl: "",
-      updatedAt: job.updatedAt
+      slidesUrl: ""
     }).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
-      console.warn(`Multimodal article registry update failed: ${message}`);
+      console.warn(`Firebase slides artifact update failed: ${message}`);
     });
   }
 

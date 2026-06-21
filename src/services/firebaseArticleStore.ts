@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createArticleIdentity, getUrlHost } from "./identity.js";
+import { createArticleIdentity, getUrlHost, normalizeSlidesUrl } from "./identity.js";
 import { chooseText } from "./textUtils.js";
 import { getDb } from "./firebaseAdmin.js";
 
@@ -88,6 +88,80 @@ export async function registerArticle(rawInput: RegisterArticleInput): Promise<R
     articleId: identity.articleId,
     canonicalUrl: identity.canonicalUrl,
     sourceKind: identity.sourceKind,
+    isNew: !existing
+  };
+}
+
+export type ViewerArticleStatus = "pending" | "processing" | "completed" | "failed";
+
+export type UpsertSlideArtifactInput = {
+  originalUrl?: string;
+  canonicalUrl?: string;
+  title?: string;
+  headline?: string;
+  slidesStatus: ViewerArticleStatus;
+  slidesUrl?: string;
+  presentationId?: string | null;
+  updatedAt?: string;
+};
+
+export type UpsertSlideArtifactResult = {
+  articleId: string;
+  isNew: boolean;
+};
+
+type ExistingSlideArticle = {
+  originalUrl?: string;
+  title?: string;
+  source?: { headline?: string };
+  slides?: { url?: string };
+};
+
+/**
+ * Write the slides artifact for an article into Firebase Realtime Database.
+ *
+ * This is the automation-side counterpart to {@link registerArticle}: it updates
+ * ONLY the slides-owned fields via a partial update, so `manga` and the
+ * registration-owned fields (registeredAt / registeredFrom / lastRegisteredAt)
+ * are never clobbered (they are simply absent from the patch). title / headline
+ * are filled via chooseText so a weaker (slide-derived) value never overwrites a
+ * stronger existing one. The articleId is recomputed from the URL so the slides
+ * land on the same node a Shortcut registration would create.
+ */
+export async function upsertSlideArtifact(input: UpsertSlideArtifactInput): Promise<UpsertSlideArtifactResult | undefined> {
+  const sourceUrl = input.canonicalUrl || input.originalUrl;
+  if (!sourceUrl) {
+    return undefined;
+  }
+
+  const identity = createArticleIdentity(sourceUrl);
+  const ref = getDb().ref(`/articles/${identity.articleId}`);
+  const snapshot = await ref.get();
+  const existing: ExistingSlideArticle | undefined = snapshot.exists() ? snapshot.val() : undefined;
+
+  const fallbackTitle = getUrlHost(identity.canonicalUrl) || identity.canonicalUrl;
+  const slidesUrl = normalizeSlidesUrl(input.slidesUrl || existing?.slides?.url || "", input.presentationId);
+
+  const patch: Record<string, unknown> = {
+    articleId: identity.articleId,
+    canonicalUrl: identity.canonicalUrl,
+    originalUrl: existing?.originalUrl || input.originalUrl || sourceUrl,
+    title: chooseText(input.title, existing?.title, fallbackTitle),
+    source: {
+      kind: identity.sourceKind,
+      headline: chooseText(input.headline, existing?.source?.headline, "")
+    },
+    slides: {
+      status: input.slidesStatus,
+      url: slidesUrl
+    },
+    updatedAt: nowJstIso()
+  };
+
+  await ref.update(patch);
+
+  return {
+    articleId: identity.articleId,
     isNew: !existing
   };
 }

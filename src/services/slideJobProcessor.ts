@@ -18,7 +18,7 @@ import {
   transitionSlideJob,
   updateSlideJob
 } from "./jobStore.js";
-import { upsertSlideArticle } from "./multimodalArticleRegistry.js";
+import { upsertSlideArtifact } from "./firebaseArticleStore.js";
 import {
   notifySlackGasSlidesCompleted,
   notifySlackJobFailed
@@ -116,7 +116,7 @@ export async function processSlideJob(
     });
 
     try {
-      await upsertSlideArticle({
+      await upsertSlideArtifact({
         originalUrl: getPrimaryJobUrl(completedJob),
         title: getSlideDataTitle(renderedSlideData) ?? completedJob.focus,
         headline: getSlideDataHeadline(renderedSlideData) ?? completedJob.focus,
@@ -127,7 +127,7 @@ export async function processSlideJob(
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.warn(`Multimodal article registry update failed: ${message}`);
+      logger.warn(`Firebase slides artifact update failed: ${message}`);
     }
 
     try {
@@ -161,7 +161,7 @@ export async function processSlideJob(
     });
 
     try {
-      await upsertSlideArticle({
+      await upsertSlideArtifact({
         originalUrl: getPrimaryJobUrl(failedJob),
         title: failedJob.focus,
         headline: failedJob.focus,
@@ -170,9 +170,9 @@ export async function processSlideJob(
         presentationId: failedJob.presentationId,
         updatedAt: failedJob.updatedAt
       });
-    } catch (registryError) {
-      const registryMessage = registryError instanceof Error ? registryError.message : String(registryError);
-      logger.warn(`Multimodal article registry update failed: ${registryMessage}`);
+    } catch (artifactError) {
+      const artifactMessage = artifactError instanceof Error ? artifactError.message : String(artifactError);
+      logger.warn(`Firebase slides artifact update failed: ${artifactMessage}`);
     }
 
     try {
