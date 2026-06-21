@@ -51,6 +51,18 @@ const envSchema = z.object({
   MANGA_NOTEBOOKLM_NAME: z.string().default("漫画Maker"),
   // チャット応答待ちを含むブラウザ操作の上限時間(生成 step1/step2 とは別枠)。
   MANGA_NOTEBOOKLM_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
+  // Phase4: Step3 で生成されたスライドデックの共有URLを claude --chrome で取得し
+  // Firebase の manga.url へ登録する。Step3 が executed の時のみ動く後続フェーズ。
+  // 既定 false(安全側)。前提は AUTOSYNC と同じ(Chrome + 拡張 + NotebookLM ログイン)。
+  MANGA_DECK_AUTOFETCH: z.coerce.boolean().default(false),
+  // Step3 トリガ後、生成完了を見込んで最初に待つ固定時間(約10分)。
+  MANGA_DECK_INITIAL_WAIT_MS: z.coerce.number().int().positive().default(600_000),
+  // 最初の確認でまだ生成中だった場合の追加待機(1回あたり、約1分)。
+  MANGA_DECK_RETRY_WAIT_MS: z.coerce.number().int().positive().default(60_000),
+  // 追加待機+再確認の最大回数。これを超えても未完了なら Slack へエラー通知する。
+  MANGA_DECK_MAX_RETRIES: z.coerce.number().int().nonnegative().default(3),
+  // 1回のデックURL取得(claude --chrome)の上限時間。
+  MANGA_DECK_FETCH_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
   GOOGLE_SLIDES_TEMPLATE_ID: z.string().optional(),
   GAS_WEB_APP_URL: z.string().optional(),
   TAVILY_API_KEY: z.string().optional(),

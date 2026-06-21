@@ -113,6 +113,33 @@ export async function notifyMangaFailed(input: {
   });
 }
 
+export async function notifyMangaDeckReady(input: {
+  channelId?: string;
+  requestedBy?: string;
+  jobId: string;
+  title?: string;
+  deckUrl: string;
+}) {
+  const titleLine = input.title ? `: ${input.title}` : "";
+  await postSlackMessage({
+    channelId: input.channelId,
+    text: `${mention(input.requestedBy)}スライドデックURLを取得し登録しました${titleLine}\nJob ID: ${input.jobId}\n${input.deckUrl}`
+  });
+}
+
+export async function notifyMangaDeckFailed(input: {
+  channelId?: string;
+  requestedBy?: string;
+  jobId?: string;
+  error: string;
+}) {
+  const jobLine = input.jobId ? `\nJob ID: ${input.jobId}` : "";
+  await postSlackMessage({
+    channelId: input.channelId,
+    text: `${mention(input.requestedBy)}スライドデックURLの取得・登録に失敗しました。${jobLine}\n${input.error}`
+  });
+}
+
 export async function postSlackText(input: { channelId?: string; text: string }) {
   await postSlackMessage(input);
 }

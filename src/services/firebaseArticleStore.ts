@@ -114,7 +114,7 @@ type ExistingSlideArticle = {
   originalUrl?: string;
   title?: string;
   source?: { headline?: string };
-  slides?: { url?: string };
+  slides?: ExistingArtifact;
 };
 
 /**
@@ -141,6 +141,16 @@ export async function upsertSlideArtifact(input: UpsertSlideArtifactInput): Prom
 
   const fallbackTitle = getUrlHost(identity.canonicalUrl) || identity.canonicalUrl;
   const slidesUrl = normalizeSlidesUrl(input.slidesUrl || existing?.slides?.url || "", input.presentationId);
+  const updatedAt = input.updatedAt || nowJstIso();
+  const slides = shouldPreserveManualArtifact(existing?.slides)
+    ? existing?.slides
+    : {
+        status: input.slidesStatus,
+        url: slidesUrl,
+        origin: "automation",
+        locked: false,
+        updatedAt
+      };
 
   const patch: Record<string, unknown> = {
     articleId: identity.articleId,
@@ -151,11 +161,8 @@ export async function upsertSlideArtifact(input: UpsertSlideArtifactInput): Prom
       kind: identity.sourceKind,
       headline: chooseText(input.headline, existing?.source?.headline, "")
     },
-    slides: {
-      status: input.slidesStatus,
-      url: slidesUrl
-    },
-    updatedAt: nowJstIso()
+    slides,
+    updatedAt
   };
 
   await ref.update(patch);
@@ -164,4 +171,95 @@ export async function upsertSlideArtifact(input: UpsertSlideArtifactInput): Prom
     articleId: identity.articleId,
     isNew: !existing
   };
+}
+
+export type UpsertMangaArtifactInput = {
+  /** 元記事の URL(canonicalUrl 算出に使う。slides/registration と同じノードへ着地させる)。 */
+  articleUrl: string;
+  /** NotebookLM で取得したスライドデックの共有URL(ベースURL)。 */
+  deckUrl: string;
+  status: ViewerArticleStatus;
+  title?: string;
+  headline?: string;
+};
+
+export type UpsertMangaArtifactResult = {
+  articleId: string;
+  isNew: boolean;
+};
+
+type ExistingMangaArticle = {
+  originalUrl?: string;
+  title?: string;
+  source?: { headline?: string };
+  manga?: ExistingArtifact;
+};
+
+type ExistingArtifact = {
+  status?: ViewerArticleStatus;
+  url?: string;
+  origin?: string;
+  locked?: boolean;
+  updatedAt?: string;
+};
+
+/**
+ * Write the manga (NotebookLM slide deck) artifact for an article into Firebase.
+ *
+ * Mirrors {@link upsertSlideArtifact}: a partial update that touches ONLY the
+ * `manga` subtree, so `slides` and the registration-owned fields
+ * (registeredAt / registeredFrom / lastRegisteredAt) are never clobbered (they
+ * are simply absent from the patch). The deck URL is a NotebookLM *artifact* URL
+ * — NOT a Google Slides URL — so it is stored verbatim (no normalizeSlidesUrl).
+ * title / headline use chooseText so a weaker value never overwrites a stronger
+ * existing one. The articleId is recomputed from the article URL so the manga
+ * lands on the same node a Shortcut registration / slides write would create.
+ */
+export async function upsertMangaArtifact(input: UpsertMangaArtifactInput): Promise<UpsertMangaArtifactResult | undefined> {
+  const sourceUrl = input.articleUrl;
+  if (!sourceUrl) {
+    return undefined;
+  }
+
+  const identity = createArticleIdentity(sourceUrl);
+  const ref = getDb().ref(`/articles/${identity.articleId}`);
+  const snapshot = await ref.get();
+  const existing: ExistingMangaArticle | undefined = snapshot.exists() ? snapshot.val() : undefined;
+
+  const fallbackTitle = getUrlHost(identity.canonicalUrl) || identity.canonicalUrl;
+  const deckUrl = input.deckUrl || existing?.manga?.url || "";
+  const updatedAt = nowJstIso();
+  const manga = shouldPreserveManualArtifact(existing?.manga)
+    ? existing?.manga
+    : {
+        status: input.status,
+        url: deckUrl,
+        origin: "automation",
+        locked: false,
+        updatedAt
+      };
+
+  const patch: Record<string, unknown> = {
+    articleId: identity.articleId,
+    canonicalUrl: identity.canonicalUrl,
+    originalUrl: existing?.originalUrl || input.articleUrl || sourceUrl,
+    title: chooseText(input.title, existing?.title, fallbackTitle),
+    source: {
+      kind: identity.sourceKind,
+      headline: chooseText(input.headline, existing?.source?.headline, "")
+    },
+    manga,
+    updatedAt
+  };
+
+  await ref.update(patch);
+
+  return {
+    articleId: identity.articleId,
+    isNew: !existing
+  };
+}
+
+export function shouldPreserveManualArtifact(artifact: ExistingArtifact | undefined): boolean {
+  return artifact?.status === "completed" && artifact.origin === "manual" && artifact.locked === true;
 }

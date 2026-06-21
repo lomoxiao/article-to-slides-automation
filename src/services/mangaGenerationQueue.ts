@@ -1,4 +1,5 @@
 import { runArticleToMangaJob } from "./articleToManga.js";
+import { fetchAndRegisterMangaDeck } from "./mangaDeckRetrieval.js";
 import { notifyMangaCompleted, notifyMangaFailed } from "./slackNotifier.js";
 import type { MangaTreatment } from "../types/manga.js";
 
@@ -50,6 +51,16 @@ async function runMangaJob(input: EnqueueMangaGenerationInput): Promise<void> {
       driveError: result.driveError,
       notebookLmStatus: result.notebookLmStatus,
       notebookLmDetail: result.notebookLmDetail
+    });
+
+    // 後続フェーズ: Step3 が起動していれば生成完了を待ってデックURLを取得し Firebase に登録する。
+    // 長い待機(約10〜13分)を含むが、例外は内部で隔離され通知されるのでキューは止めない。
+    await fetchAndRegisterMangaDeck({
+      job: result.job,
+      notebookLmStatus: result.notebookLmStatus,
+      channelId: input.sourceChannelId,
+      requestedBy: input.requestedBy,
+      logger: (message) => console.log(`[manga-generate] ${message}`)
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
