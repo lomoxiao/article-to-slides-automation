@@ -4,6 +4,7 @@ import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
+import { copySanitizedCodexConfig } from "../services/codexConfig.js";
 
 type VersionCheck = {
   ok: boolean;
@@ -38,15 +39,24 @@ async function runPreflight(): Promise<PreflightResult> {
   const runnerHome = path.resolve(config.CODEX_RUNNER_HOME);
   const sourceHome = path.resolve(config.CODEX_SOURCE_HOME ?? path.join(homedir(), ".codex"));
   await copyConfigFile(resolveExternalCodexPath(config.CODEX_CLI_COMMAND), path.join(runnerHome, "bin", "codex.exe"));
+  const runnerHomeWritable = await checkRunnerHomeWritable(runnerHome);
+  const authJsonCopied = await copyConfigFile(path.join(sourceHome, "auth.json"), path.join(runnerHome, "auth.json"));
+  const configCopy = await copySanitizedCodexConfig(
+    path.join(sourceHome, "config.toml"),
+    path.join(runnerHome, "config.toml")
+  );
+  if (configCopy.removedServiceTier !== undefined) {
+    console.warn(
+      `[codex:preflight] Ignored unsupported top-level service_tier=${JSON.stringify(configCopy.removedServiceTier)}.`
+    );
+  }
   const resolvedCodexPath = resolveCodexPath(config.CODEX_CLI_COMMAND);
   const pathNotWindowsApps = !resolvedCodexPath.toLowerCase().includes("\\windowsapps\\");
   const fileExists = Boolean(resolvedCodexPath) && existsSync(resolvedCodexPath);
   const versionCheck = fileExists
-    ? await runVersionCheck(resolvedCodexPath)
+    ? await runVersionCheck(resolvedCodexPath, runnerHome)
     : { ok: false, output: "codex executable was not found." };
-  const runnerHomeWritable = await checkRunnerHomeWritable(runnerHome);
-  const authJsonCopied = await copyConfigFile(path.join(sourceHome, "auth.json"), path.join(runnerHome, "auth.json"));
-  const configTomlCopied = await copyConfigFile(path.join(sourceHome, "config.toml"), path.join(runnerHome, "config.toml"));
+  const configTomlCopied = configCopy.copied;
 
   const checks = {
     pathNotWindowsApps,
@@ -107,11 +117,15 @@ function getUserCodexCandidates() {
   ].filter((candidate): candidate is string => Boolean(candidate));
 }
 
-function runVersionCheck(codexPath: string): Promise<VersionCheck> {
+function runVersionCheck(codexPath: string, codexHome: string): Promise<VersionCheck> {
   const command = `& ${psSingleQuote(codexPath)} --version`;
 
   return new Promise((resolve) => {
     const child = spawn("powershell.exe", ["-NoProfile", "-Command", command], {
+      env: {
+        ...process.env,
+        CODEX_HOME: codexHome
+      },
       windowsHide: true
     });
 

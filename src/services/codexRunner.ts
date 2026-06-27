@@ -4,6 +4,7 @@ import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
+import { copySanitizedCodexConfig } from "./codexConfig.js";
 
 type RunCodexForJobInput = {
   jobDir: string;
@@ -304,7 +305,15 @@ async function prepareRunnerCodexHome(codexHome?: string) {
   await mkdir(path.join(runnerHome, "tmp"), { recursive: true });
 
   await copyIfExists(path.join(sourceHome, "auth.json"), path.join(runnerHome, "auth.json"));
-  await copyIfExists(path.join(sourceHome, "config.toml"), path.join(runnerHome, "config.toml"));
+  const configCopy = await copySanitizedCodexConfig(
+    path.join(sourceHome, "config.toml"),
+    path.join(runnerHome, "config.toml")
+  );
+  if (configCopy.removedServiceTier !== undefined) {
+    console.warn(
+      `[codex] Ignored unsupported top-level service_tier=${JSON.stringify(configCopy.removedServiceTier)} while preparing ${runnerHome}.`
+    );
+  }
   await copyIfExists(path.join(sourceHome, "AGENTS.md"), path.join(runnerHome, "AGENTS.md"));
   await copyExeIfNeeded(resolveExternalCodexCommand(config.CODEX_CLI_COMMAND), path.join(runnerHome, "bin", "codex.exe"));
 
