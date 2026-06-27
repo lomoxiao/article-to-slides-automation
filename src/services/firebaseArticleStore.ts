@@ -92,7 +92,15 @@ export async function registerArticle(rawInput: RegisterArticleInput): Promise<R
   };
 }
 
-export type ViewerArticleStatus = "pending" | "processing" | "completed" | "failed";
+export type ViewerArticleStatus = "pending" | "processing" | "action_required" | "completed" | "failed";
+
+export type ArtifactStage =
+  | "preparing"
+  | "drive_registration"
+  | "source_registration"
+  | "deck_generation"
+  | "url_retrieval"
+  | "slides_generation";
 
 export type UpsertSlideArtifactInput = {
   originalUrl?: string;
@@ -100,6 +108,8 @@ export type UpsertSlideArtifactInput = {
   title?: string;
   headline?: string;
   slidesStatus: ViewerArticleStatus;
+  stage?: ArtifactStage;
+  statusMessage?: string;
   slidesUrl?: string;
   presentationId?: string | null;
   updatedAt?: string;
@@ -146,6 +156,8 @@ export async function upsertSlideArtifact(input: UpsertSlideArtifactInput): Prom
     ? existing?.slides
     : {
         status: input.slidesStatus,
+        ...(input.stage ? { stage: input.stage } : {}),
+        ...(input.statusMessage ? { statusMessage: input.statusMessage } : {}),
         url: slidesUrl,
         origin: "automation",
         locked: false,
@@ -179,6 +191,8 @@ export type UpsertMangaArtifactInput = {
   /** NotebookLM で取得したスライドデックの共有URL(ベースURL)。 */
   deckUrl: string;
   status: ViewerArticleStatus;
+  stage?: ArtifactStage;
+  statusMessage?: string;
   title?: string;
   headline?: string;
 };
@@ -201,6 +215,8 @@ type ExistingArtifact = {
   origin?: string;
   locked?: boolean;
   updatedAt?: string;
+  stage?: ArtifactStage;
+  statusMessage?: string;
 };
 
 /**
@@ -233,6 +249,8 @@ export async function upsertMangaArtifact(input: UpsertMangaArtifactInput): Prom
     ? existing?.manga
     : {
         status: input.status,
+        ...(input.stage ? { stage: input.stage } : {}),
+        ...(input.statusMessage ? { statusMessage: input.statusMessage } : {}),
         url: deckUrl,
         origin: "automation",
         locked: false,
@@ -262,4 +280,32 @@ export async function upsertMangaArtifact(input: UpsertMangaArtifactInput): Prom
 
 export function shouldPreserveManualArtifact(artifact: ExistingArtifact | undefined): boolean {
   return artifact?.status === "completed" && artifact.origin === "manual" && artifact.locked === true;
+}
+
+export type ArtifactDiagnosticInput = {
+  articleUrl: string;
+  artifactType: "slides" | "manga";
+  status: ViewerArticleStatus;
+  stage: ArtifactStage;
+  code: string;
+  detail: string;
+  jobId?: string;
+};
+
+/** Store operational details outside /articles so ordinary viewers cannot read them. */
+export async function upsertArtifactDiagnostic(input: ArtifactDiagnosticInput): Promise<void> {
+  const identity = createArticleIdentity(input.articleUrl);
+  await getDb().ref(`/artifactDiagnostics/${identity.articleId}/${input.artifactType}`).set({
+    status: input.status,
+    stage: input.stage,
+    code: input.code,
+    detail: input.detail,
+    ...(input.jobId ? { jobId: input.jobId } : {}),
+    updatedAt: nowJstIso()
+  });
+}
+
+export async function clearArtifactDiagnostic(articleUrl: string, artifactType: "slides" | "manga"): Promise<void> {
+  const identity = createArticleIdentity(articleUrl);
+  await getDb().ref(`/artifactDiagnostics/${identity.articleId}/${artifactType}`).remove();
 }

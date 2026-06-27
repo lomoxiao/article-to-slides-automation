@@ -158,3 +158,9 @@ SLACK_COMPLETION_CHANNEL_ID=C000000000
 - Socket Modeを使うため、`SLACK_APP_TOKEN` が設定されている必要があります。
 - GASからSlackへ投稿するため、GAS側にはSlack Bot Tokenと投稿先チャンネルIDが必要です。
 - 通常のSlack投稿は処理されません。`[slide-generate]` prefixを持つメッセージだけが対象です。
+
+## Viewer成果物ステータス
+
+Firebaseの`slides`と`manga`は共通の`pending | processing | action_required | failed | completed`を使用します。`stage`で現在または失敗した工程を表し、一般viewer向けの説明は`statusMessage`へ保存します。
+
+漫画はDrive登録、NotebookLMソース登録、デック生成、URL取得を個別に記録します。デック生成またはURL取得で自動処理を継続できない場合は、手動操作で復旧できる`action_required`になります。技術的なエラーは記事データへ混在させず、editor専用の`/artifactDiagnostics/{articleId}/{artifactType}`へ保存します。

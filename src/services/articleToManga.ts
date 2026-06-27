@@ -6,6 +6,13 @@ import { createMangaJob, updateMangaJob } from "./mangaJobStore.js";
 import { generateMangaOutline, listCharacterSheetImages } from "./mangaOutlineGen.js";
 import { upsertGoogleDoc } from "./driveUploader.js";
 import { syncNotebookLm, type NotebookLmSyncStatus } from "./notebookLmSync.js";
+import {
+  clearArtifactDiagnostic,
+  upsertArtifactDiagnostic,
+  upsertMangaArtifact,
+  type ArtifactStage,
+  type ViewerArticleStatus
+} from "./firebaseArticleStore.js";
 import type { MangaJob, MangaTreatment } from "../types/manga.js";
 
 const DEFAULT_CHARACTER_SHEETS_DIR = path.join("manga-templates", "character-sheets");
@@ -55,7 +62,28 @@ export async function runArticleToMangaJob(
   const log = input.logger ?? (() => {});
 
   // 1. 記事本文を取得(content-extractor 経由 / 既存 sourceAggregator を再利用)
-  const source = await fetchSourceContent(input.url);
+  await writeMangaViewerState({
+    articleUrl: input.url,
+    status: "processing",
+    stage: "preparing",
+    statusMessage: "漫画生成の準備中です",
+    log
+  });
+  let source;
+  try {
+    source = await fetchSourceContent(input.url);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await writeMangaViewerState({
+      articleUrl: input.url,
+      status: "failed",
+      stage: "preparing",
+      statusMessage: "漫画生成の準備に失敗しました",
+      diagnostic: { code: "MANGA_PREPARATION_FAILED", detail: message },
+      log
+    });
+    throw error;
+  }
 
   // 2. ジョブ作成 + source.txt 保存
   const job = await createMangaJob({
@@ -97,6 +125,15 @@ export async function runArticleToMangaJob(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await updateMangaJob(job, { error: message });
+    await writeMangaViewerState({
+      articleUrl: source.url,
+      title: source.title,
+      status: "failed",
+      stage: "preparing",
+      statusMessage: "漫画生成の準備に失敗しました",
+      diagnostic: { code: "MANGA_OUTLINE_FAILED", detail: message, jobId: job.id },
+      log
+    });
     throw error;
   }
 
@@ -113,6 +150,14 @@ export async function runArticleToMangaJob(
   let driveStep1Url: string | undefined;
   let driveStep2Url: string | undefined;
   let driveError: string | undefined;
+  await writeMangaViewerState({
+    articleUrl: source.url,
+    title: source.title,
+    status: "processing",
+    stage: "drive_registration",
+    statusMessage: "Google Driveに生成素材を登録しています",
+    log
+  });
   if (config.MANGA_DRIVE_FOLDER_ID) {
     try {
       log("Uploading step1/step2 to Google Drive (Google ドキュメント) ...");
@@ -138,9 +183,28 @@ export async function runArticleToMangaJob(
     } catch (error) {
       driveError = error instanceof Error ? error.message : String(error);
       nextJob = await updateMangaJob(nextJob, { error: `Drive upload failed: ${driveError}` });
+      await writeMangaViewerState({
+        articleUrl: source.url,
+        title: source.title,
+        status: "failed",
+        stage: "drive_registration",
+        statusMessage: "Google Driveへの登録に失敗しました",
+        diagnostic: { code: "DRIVE_REGISTRATION_FAILED", detail: driveError, jobId: job.id },
+        log
+      });
       log(`  注意: Drive アップロードに失敗しました(生成物はローカルに保存済み): ${driveError}`);
     }
   } else {
+    driveError = "MANGA_DRIVE_FOLDER_ID 未設定";
+    await writeMangaViewerState({
+      articleUrl: source.url,
+      title: source.title,
+      status: "failed",
+      stage: "drive_registration",
+      statusMessage: "Google Driveへの登録を開始できませんでした",
+      diagnostic: { code: "DRIVE_CONFIGURATION_MISSING", detail: driveError, jobId: job.id },
+      log
+    });
     log("Drive upload: スキップ (MANGA_DRIVE_FOLDER_ID 未設定)");
   }
 
@@ -151,10 +215,38 @@ export async function runArticleToMangaJob(
   let notebookLmDetail: string | undefined;
   if (config.MANGA_NOTEBOOKLM_AUTOSYNC) {
     if (driveStep1Url && driveStep2Url) {
+      await writeMangaViewerState({
+        articleUrl: source.url,
+        title: source.title,
+        status: "processing",
+        stage: "source_registration",
+        statusMessage: "NotebookLMにソースを登録しています",
+        log
+      });
       log(`NotebookLM 同期 + Step3 トリガを実行中 (claude --chrome / ノートブック「${config.MANGA_NOTEBOOKLM_NAME}」) ...`);
       const sync = await syncNotebookLm({ jobDir: job.jobDir, logger: log });
       notebookLmStatus = sync.status;
       notebookLmDetail = sync.detail;
+      if (sync.status === "executed") {
+        await writeMangaViewerState({
+          articleUrl: source.url,
+          title: source.title,
+          status: "processing",
+          stage: "deck_generation",
+          statusMessage: "NotebookLMでスライドデックを生成しています",
+          log
+        });
+      } else {
+        await writeMangaViewerState({
+          articleUrl: source.url,
+          title: source.title,
+          status: "failed",
+          stage: "source_registration",
+          statusMessage: "NotebookLMへのソース登録に失敗しました",
+          diagnostic: { code: "NOTEBOOKLM_SOURCE_REGISTRATION_FAILED", detail: sync.detail, jobId: job.id },
+          log
+        });
+      }
     } else {
       notebookLmStatus = "skipped";
       notebookLmDetail = "Drive アップロード未完了のため NotebookLM 同期をスキップ";
@@ -162,6 +254,20 @@ export async function runArticleToMangaJob(
     }
     nextJob = await updateMangaJob(nextJob, { notebookLmStatus, notebookLmDetail });
   } else {
+    if (driveStep1Url && driveStep2Url) {
+      notebookLmStatus = "failed";
+      notebookLmDetail = "MANGA_NOTEBOOKLM_AUTOSYNC 未設定";
+      nextJob = await updateMangaJob(nextJob, { notebookLmStatus, notebookLmDetail });
+      await writeMangaViewerState({
+        articleUrl: source.url,
+        title: source.title,
+        status: "failed",
+        stage: "source_registration",
+        statusMessage: "NotebookLMへのソース登録を開始できませんでした",
+        diagnostic: { code: "NOTEBOOKLM_AUTOSYNC_DISABLED", detail: notebookLmDetail, jobId: job.id },
+        log
+      });
+    }
     log("NotebookLM 自動同期: スキップ (MANGA_NOTEBOOKLM_AUTOSYNC 未設定)");
   }
 
@@ -179,4 +285,41 @@ export async function runArticleToMangaJob(
     notebookLmStatus,
     notebookLmDetail
   };
+}
+
+type ViewerStateInput = {
+  articleUrl: string;
+  title?: string;
+  status: ViewerArticleStatus;
+  stage: ArtifactStage;
+  statusMessage: string;
+  diagnostic?: { code: string; detail: string; jobId?: string };
+  log: (message: string) => void;
+};
+
+async function writeMangaViewerState(input: ViewerStateInput): Promise<void> {
+  try {
+    await upsertMangaArtifact({
+      articleUrl: input.articleUrl,
+      deckUrl: "",
+      status: input.status,
+      stage: input.stage,
+      statusMessage: input.statusMessage,
+      title: input.title
+    });
+    if (input.diagnostic) {
+      await upsertArtifactDiagnostic({
+        articleUrl: input.articleUrl,
+        artifactType: "manga",
+        status: input.status,
+        stage: input.stage,
+        ...input.diagnostic
+      });
+    } else {
+      await clearArtifactDiagnostic(input.articleUrl, "manga");
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    input.log(`Firebase manga status update failed: ${message}`);
+  }
 }

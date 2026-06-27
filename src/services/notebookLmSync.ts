@@ -25,6 +25,7 @@ const DISALLOWED_TOOLS = ["Bash", "Edit", "Write", "Read", "Glob", "Grep", "WebF
 
 const DONE_MARKER = "NOTEBOOKLM_DONE";
 const FAIL_MARKER = "NOTEBOOKLM_FAILED";
+const NOTEBOOKLM_UNAVAILABLE_PHRASES = ["現在、回答できません", "現在回答できません", "回答できません"];
 
 /**
  * 接続済み Chrome 経由で NotebookLM を操作し、固定ノートブックの step1/step2 ソースを開いて
@@ -74,7 +75,7 @@ export async function syncNotebookLm(input: SyncNotebookLmInput): Promise<Notebo
     }
 
     const result = typeof parsed.result === "string" ? parsed.result : "";
-    return classify(log, result, stdoutPath);
+    return classifyNotebookLmSyncResult(log, result, stdoutPath);
   } catch (error) {
     const message = error instanceof Error ? error.stack ?? error.message : String(error);
     await writeFile(path.join(input.jobDir, "claude-notebooklm-error.log"), `${message}\n`, "utf8");
@@ -83,12 +84,22 @@ export async function syncNotebookLm(input: SyncNotebookLmInput): Promise<Notebo
 }
 
 /** 応答テキストのマーカー行から status を判定する。 */
-function classify(log: (m: string) => void, result: string, stdoutPath: string): NotebookLmSyncResult {
+export function classifyNotebookLmSyncResult(
+  log: (m: string) => void,
+  result: string,
+  stdoutPath: string
+): NotebookLmSyncResult {
   const markerLine = extractMarkerLine(result);
 
   if (markerLine?.startsWith(FAIL_MARKER)) {
     return fail(log, markerLine);
   }
+
+  const unavailablePhrase = findNotebookLmUnavailablePhrase(result);
+  if (unavailablePhrase) {
+    return fail(log, `${FAIL_MARKER}: NotebookLM が回答不能応答を返しました: ${unavailablePhrase}`);
+  }
+
   if (markerLine?.startsWith(DONE_MARKER)) {
     log("NotebookLM: Step3 を実行しました");
     return { status: "executed", detail: markerLine };
@@ -113,6 +124,10 @@ function extractMarkerLine(result: string): string | undefined {
   return undefined;
 }
 
+function findNotebookLmUnavailablePhrase(result: string): string | undefined {
+  return NOTEBOOKLM_UNAVAILABLE_PHRASES.find((phrase) => result.includes(phrase));
+}
+
 function fail(log: (m: string) => void, detail: string): NotebookLmSyncResult {
   log(`NotebookLM: 失敗 (${detail})`);
   return { status: "failed", detail };
@@ -132,7 +147,8 @@ function buildPrompt(notebookName: string): string {
     "   ※ 「クリックして Googleドライブと同期」などの更新操作が表示された場合はクリックして実行する",
     "5. チャット入力欄に「ステップ３を実行して」と入力して送信する。",
     "6. チャットに応答(生成開始や返信)が表示されたことを確認する。",
-    "7. 応答を確認できたら、最後の行に「NOTEBOOKLM_DONE」とだけ出力する。",
+    "7. NotebookLM が「現在、回答できません。」など回答不能を示す返信を返した場合は、最後の行に「NOTEBOOKLM_FAILED: NotebookLM が回答不能応答を返しました」と出力する。",
+    "8. 生成開始や通常の返信を確認できた場合のみ、最後の行に「NOTEBOOKLM_DONE」とだけ出力する。",
     "",
     "途中で要素が見つからない、未ログイン等で続行できない場合は、最後の行に「NOTEBOOKLM_FAILED: <理由>」と出力する。",
     "出力の最後の行は必ず NOTEBOOKLM_DONE / NOTEBOOKLM_FAILED のいずれかにすること。"

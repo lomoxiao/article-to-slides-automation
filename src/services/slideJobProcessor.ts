@@ -18,7 +18,7 @@ import {
   transitionSlideJob,
   updateSlideJob
 } from "./jobStore.js";
-import { upsertSlideArtifact } from "./firebaseArticleStore.js";
+import { clearArtifactDiagnostic, upsertArtifactDiagnostic, upsertSlideArtifact } from "./firebaseArticleStore.js";
 import {
   notifySlackGasSlidesCompleted,
   notifySlackJobFailed
@@ -125,6 +125,8 @@ export async function processSlideJob(
         presentationId: completedJob.presentationId,
         updatedAt: completedJob.completedAt ?? completedJob.updatedAt
       });
+      const completedSourceUrl = getPrimaryJobUrl(completedJob);
+      if (completedSourceUrl) await clearArtifactDiagnostic(completedSourceUrl, "slides");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.warn(`Firebase slides artifact update failed: ${message}`);
@@ -166,10 +168,24 @@ export async function processSlideJob(
         title: failedJob.focus,
         headline: failedJob.focus,
         slidesStatus: "failed",
+        stage: "slides_generation",
+        statusMessage: "Google Slidesの生成に失敗しました",
         slidesUrl: failedJob.deckUrl,
         presentationId: failedJob.presentationId,
         updatedAt: failedJob.updatedAt
       });
+      const failedSourceUrl = getPrimaryJobUrl(failedJob);
+      if (failedSourceUrl) {
+        await upsertArtifactDiagnostic({
+          articleUrl: failedSourceUrl,
+          artifactType: "slides",
+          status: "failed",
+          stage: "slides_generation",
+          code: "SLIDES_GENERATION_FAILED",
+          detail: fixedMessage,
+          jobId: failedJob.id
+        });
+      }
     } catch (artifactError) {
       const artifactMessage = artifactError instanceof Error ? artifactError.message : String(artifactError);
       logger.warn(`Firebase slides artifact update failed: ${artifactMessage}`);

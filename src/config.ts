@@ -29,6 +29,15 @@ const envSchema = z.object({
   CODEX_EXEC_SANDBOX: z.enum(["read-only", "workspace-write", "danger-full-access"]).default("workspace-write"),
   CODEX_EXEC_FULL_AUTO: z.coerce.boolean().default(true),
   CODEX_EXEC_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
+  // ⚠️ Do NOT set this. Verified 2026-06-23: setting ANTHROPIC_AUTH_TOKEN (or any
+  // auth-override token) DISABLES the Claude in Chrome extension — `claude --chrome`
+  // then silently falls back to Playwright, a separate browser with no logged-in
+  // Google session, so NotebookLM redirects to the sign-in screen and sync fails.
+  // The only `claude` CLI usage here is `--chrome` (NotebookLM); it requires the
+  // subscription/keychain login (`/login`), which the token overrides and breaks.
+  // (There are no headless text `claude -p` calls — runClaudeHeadless is unused —
+  // so the token has no upside, only this breakage.) Kept optional only to warn below.
+  ANTHROPIC_AUTH_TOKEN: z.string().optional(),
   // Claude Code settings are only used by NotebookLM autosync (`claude --chrome`).
   // Manga Step1/Step2 generation uses the CODEX_* settings above.
   CLAUDE_CLI_COMMAND: z.string().default("claude"),
@@ -79,6 +88,14 @@ const envSchema = z.object({
 });
 
 export const config = envSchema.parse(process.env);
+
+if (config.ANTHROPIC_AUTH_TOKEN) {
+  console.warn(
+    "[config] ANTHROPIC_AUTH_TOKEN is set. This DISABLES the Claude in Chrome extension: `claude --chrome` " +
+    "(NotebookLM sync / deck URL fetch) falls back to Playwright with no logged-in Google session, so it will " +
+    "fail with a sign-in redirect. Remove ANTHROPIC_AUTH_TOKEN from .env and use the subscription login (`claude`, then /login)."
+  );
+}
 
 function loadDotEnv() {
   // ローカル .env を優先し、共有抽出器の資格情報(YOUTUBE_API_KEY 等)は

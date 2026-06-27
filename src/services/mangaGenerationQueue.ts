@@ -1,6 +1,7 @@
 import { runArticleToMangaJob } from "./articleToManga.js";
 import { fetchAndRegisterMangaDeck } from "./mangaDeckRetrieval.js";
 import { notifyMangaCompleted, notifyMangaFailed } from "./slackNotifier.js";
+import { clearArtifactDiagnostic, upsertMangaArtifact } from "./firebaseArticleStore.js";
 import type { MangaTreatment } from "../types/manga.js";
 
 export type EnqueueMangaGenerationInput = {
@@ -24,7 +25,28 @@ let queueTail: Promise<void> = Promise.resolve();
  * 生成本体は待たずに裏で実行し、完了/失敗時にチャンネルへ通知する。
  */
 export function enqueueMangaGeneration(input: EnqueueMangaGenerationInput): void {
-  queueTail = queueTail.then(() => runMangaJob(input));
+  const queuedState = writeQueuedViewerState(input);
+  queueTail = queueTail.then(async () => {
+    await queuedState;
+    await runMangaJob(input);
+  });
+}
+
+async function writeQueuedViewerState(input: EnqueueMangaGenerationInput): Promise<void> {
+  try {
+    await upsertMangaArtifact({
+      articleUrl: input.url,
+      deckUrl: "",
+      status: "processing",
+      stage: "preparing",
+      statusMessage: "漫画生成の開始を待っています",
+      title: input.focus
+    });
+    await clearArtifactDiagnostic(input.url, "manga");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[manga-generate] queued status update failed: ${message}`);
+  }
 }
 
 async function runMangaJob(input: EnqueueMangaGenerationInput): Promise<void> {

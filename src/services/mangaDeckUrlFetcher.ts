@@ -3,7 +3,7 @@ import path from "node:path";
 import { config } from "../config.js";
 import { parseClaudeJson, spawnClaude } from "./claudeRunner.js";
 
-export type MangaDeckFetchStatus = "fetched" | "pending" | "failed";
+export type MangaDeckFetchStatus = "fetched" | "pending" | "generation_failed" | "retrieval_failed";
 
 export type MangaDeckFetchResult = {
   status: MangaDeckFetchStatus;
@@ -27,7 +27,9 @@ const DISALLOWED_TOOLS = ["Bash", "Edit", "Write", "Read", "Glob", "Grep", "WebF
 
 const URL_MARKER = "NBLM_DECK_URL:";
 const PENDING_MARKER = "NBLM_DECK_PENDING";
-const FAIL_MARKER = "NBLM_DECK_FAILED";
+const GENERATION_FAIL_MARKER = "NBLM_DECK_GENERATION_FAILED";
+const RETRIEVAL_FAIL_MARKER = "NBLM_DECK_URL_FAILED";
+const LEGACY_FAIL_MARKER = "NBLM_DECK_FAILED";
 
 /**
  * 接続済み Chrome 経由で NotebookLM を操作し、固定ノートブックの Studio 最上位(=最新)
@@ -68,25 +70,29 @@ export async function fetchMangaDeckUrl(input: FetchMangaDeckInput): Promise<Man
     await writeFile(stderrPath, stderr, "utf8");
 
     if (exitCode !== 0) {
-      return fail(log, `claude --chrome がコード ${exitCode} で終了しました。See ${stderrPath}`);
+      return retrievalFail(log, `claude --chrome がコード ${exitCode} で終了しました。See ${stderrPath}`);
     }
 
     const parsed = parseClaudeJson(stdout);
     if (parsed.is_error) {
-      return fail(log, `claude --chrome がエラーを返しました (${parsed.subtype ?? "unknown"})。See ${stdoutPath}`);
+      return retrievalFail(log, `claude --chrome がエラーを返しました (${parsed.subtype ?? "unknown"})。See ${stdoutPath}`);
     }
 
     const result = typeof parsed.result === "string" ? parsed.result : "";
-    return classify(log, result, stdoutPath);
+    return classifyMangaDeckFetchResult(log, result, stdoutPath);
   } catch (error) {
     const message = error instanceof Error ? error.stack ?? error.message : String(error);
     await writeFile(path.join(input.jobDir, "claude-deckfetch-error.log"), `${message}\n`, "utf8");
-    return fail(log, error instanceof Error ? error.message : String(error));
+    return retrievalFail(log, error instanceof Error ? error.message : String(error));
   }
 }
 
 /** 応答テキストのマーカー行から status を判定する。 */
-function classify(log: (m: string) => void, result: string, stdoutPath: string): MangaDeckFetchResult {
+export function classifyMangaDeckFetchResult(
+  log: (m: string) => void,
+  result: string,
+  stdoutPath: string
+): MangaDeckFetchResult {
   const markerLine = extractMarkerLine(result);
 
   if (markerLine?.startsWith(URL_MARKER)) {
@@ -95,7 +101,7 @@ function classify(log: (m: string) => void, result: string, stdoutPath: string):
     // プロンプト側でも除去を指示しているが、念のため Node 側でも切り落とす。
     const url = raw.split("?")[0]?.trim() ?? "";
     if (!/^https?:\/\//i.test(url)) {
-      return fail(log, `デックURLの形式が不正です: ${raw}。See ${stdoutPath}`);
+      return retrievalFail(log, `デックURLの形式が不正です: ${raw}。See ${stdoutPath}`);
     }
     log(`NotebookLM: デックURLを取得しました (${url})`);
     return { status: "fetched", url, detail: markerLine };
@@ -104,12 +110,15 @@ function classify(log: (m: string) => void, result: string, stdoutPath: string):
     log("NotebookLM: スライドデックはまだ生成中です");
     return { status: "pending", detail: markerLine };
   }
-  if (markerLine?.startsWith(FAIL_MARKER)) {
-    return fail(log, markerLine);
+  if (markerLine?.startsWith(GENERATION_FAIL_MARKER)) {
+    return generationFail(log, markerLine);
+  }
+  if (markerLine?.startsWith(RETRIEVAL_FAIL_MARKER) || markerLine?.startsWith(LEGACY_FAIL_MARKER)) {
+    return retrievalFail(log, markerLine);
   }
 
   // マーカーが見つからない = 想定外の終わり方。安全側で failed 扱い(成功と誤通知しない)。
-  return fail(log, `デックURL取得の結果を判定できませんでした(マーカー行なし)。See ${stdoutPath}`);
+  return retrievalFail(log, `デックURL取得の結果を判定できませんでした(マーカー行なし)。See ${stdoutPath}`);
 }
 
 function extractMarkerLine(result: string): string | undefined {
@@ -120,16 +129,27 @@ function extractMarkerLine(result: string): string | undefined {
   // 末尾から最初に見つかったマーカー行を採用する。
   for (let i = lines.length - 1; i >= 0; i -= 1) {
     const line = lines[i];
-    if (line.startsWith(URL_MARKER) || line.startsWith(PENDING_MARKER) || line.startsWith(FAIL_MARKER)) {
+    if (
+      line.startsWith(URL_MARKER) ||
+      line.startsWith(PENDING_MARKER) ||
+      line.startsWith(GENERATION_FAIL_MARKER) ||
+      line.startsWith(RETRIEVAL_FAIL_MARKER) ||
+      line.startsWith(LEGACY_FAIL_MARKER)
+    ) {
       return line;
     }
   }
   return undefined;
 }
 
-function fail(log: (m: string) => void, detail: string): MangaDeckFetchResult {
+function generationFail(log: (m: string) => void, detail: string): MangaDeckFetchResult {
+  log(`NotebookLM: スライドデック生成失敗 (${detail})`);
+  return { status: "generation_failed", detail };
+}
+
+function retrievalFail(log: (m: string) => void, detail: string): MangaDeckFetchResult {
   log(`NotebookLM: デックURL取得失敗 (${detail})`);
-  return { status: "failed", detail };
+  return { status: "retrieval_failed", detail };
 }
 
 function buildPrompt(notebookName: string): string {
@@ -145,7 +165,9 @@ function buildPrompt(notebookName: string): string {
     "4. Studio 内で、最上位(=最新)にあるスライドデックの成果物を特定する。",
     "5. そのデックがまだ「生成中 / 作成中 / 処理中」(プログレス表示で開けない/共有できない)であれば、",
     "   余計な操作をせず、最後の行に「NBLM_DECK_PENDING」とだけ出力して終了する。",
-    "6. デックが生成完了している(開ける/共有できる)場合のみ次に進む:",
+    "6. 最新のデックが存在しない、またはデックに生成エラー・生成失敗が明示されている場合は、最後の行に",
+    "   「NBLM_DECK_GENERATION_FAILED: <画面に表示された理由>」と出力して終了する。",
+    "7. デックが生成完了している(開ける/共有できる)場合のみ次に進む:",
     "   a. そのデックの「共有」メニュー/ボタンを開く。",
     "   b. 「リンクをコピー」または「コピー」を押して共有URLをクリップボードにコピーする。",
     "   c. navigator.clipboard.readText() に相当する方法でクリップボードのテキストを取得する。",
@@ -153,9 +175,9 @@ function buildPrompt(notebookName: string): string {
     "      (https://notebooklm.google.com/notebook/<id>/artifact/<id> の形)だけにする。",
     "      ※ クエリ文字列を付けたまま出力すると出力フィルタに弾かれるため、必ず「?」以降は除くこと。",
     "   e. 最後の行に「NBLM_DECK_URL: <ベースURL>」とだけ出力する。",
-    "7. 完了済みのスライドデックが1件も無い、未ログイン、要素が見つからない等で続行できない場合は、",
-    "   最後の行に「NBLM_DECK_FAILED: <理由>」と出力する。",
+    "8. デック生成完了後に共有操作やURL取得ができない、未ログイン、要素が見つからない等で続行できない場合は、",
+    "   最後の行に「NBLM_DECK_URL_FAILED: <理由>」と出力する。",
     "",
-    "出力の最後の行は必ず NBLM_DECK_URL / NBLM_DECK_PENDING / NBLM_DECK_FAILED のいずれかにすること。"
+    "出力の最後の行は必ず NBLM_DECK_URL / NBLM_DECK_PENDING / NBLM_DECK_GENERATION_FAILED / NBLM_DECK_URL_FAILED のいずれかにすること。"
   ].join("\n");
 }

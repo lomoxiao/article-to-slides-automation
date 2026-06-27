@@ -8,3 +8,20 @@ google-oauth-credentials.json
 google-oauth-token.json
 .codex-runner-home/
 jobs/
+
+# Local Claude/browser state
+.claude/settings.local.json
+.playwright-mcp/
+
+# Generated diagnostics
+codex-preflight.json
+
+# Environment variants
+.env.*
+!.env.example
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

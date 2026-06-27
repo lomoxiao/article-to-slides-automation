@@ -10,18 +10,18 @@ import { normalizeUrl, readFlagValue, sanitizeTextValue, tokenizeArgs } from "./
 
 export type MangaSlackArgs =
   | {
-      ok: true;
-      url: string;
-      pages: number;
-      genre?: string;
-      artStyle: string;
-      treatment: MangaTreatment;
-      audience?: string;
-      focus?: string;
-    }
+    ok: true;
+    url: string;
+    pages: number;
+    genre?: string;
+    artStyle: string;
+    treatment: MangaTreatment;
+    audience?: string;
+    focus?: string;
+  }
   | { ok: false; errorMessage: string };
 
-export const DEFAULT_MANGA_PAGES = 7;
+export const DEFAULT_MANGA_PAGES = 5;
 export const DEFAULT_MANGA_ART_STYLE = "F";
 export const DEFAULT_MANGA_TREATMENT: MangaTreatment = "B";
 

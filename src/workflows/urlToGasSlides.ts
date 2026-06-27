@@ -1,5 +1,5 @@
 import { createPendingSlideJob } from "../services/jobStore.js";
-import { upsertSlideArtifact } from "../services/firebaseArticleStore.js";
+import { clearArtifactDiagnostic, upsertSlideArtifact } from "../services/firebaseArticleStore.js";
 import type { SlideJob } from "../types/jobs.js";
 
 type UrlToGasSlidesInput = {
@@ -23,8 +23,10 @@ export async function runUrlToGasSlidesWorkflow(input: UrlToGasSlidesInput): Pro
       title: input.focus,
       headline: input.focus,
       slidesStatus: "processing",
+      stage: "slides_generation",
+      statusMessage: "Google Slidesを生成しています",
       slidesUrl: ""
-    }).catch((error) => {
+    }).then(() => clearArtifactDiagnostic(primaryUrl, "slides")).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`Firebase slides artifact update failed: ${message}`);
     });

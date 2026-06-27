@@ -33,8 +33,8 @@ export type MangaJob = {
   notebookLmStatus?: "executed" | "skipped" | "failed";
   /** NotebookLM 操作の説明・失敗理由。 */
   notebookLmDetail?: string;
-  /** Phase4: 生成スライドデックURL取得の結果。fetched=取得・登録成功 / pending=待機上限まで未完了 / failed=取得or登録失敗。 */
-  mangaDeckStatus?: "fetched" | "pending" | "failed";
+  /** Phase4: 生成スライドデックURL取得の結果。生成失敗とURL取得失敗を分離する。 */
+  mangaDeckStatus?: "fetched" | "pending" | "generation_failed" | "retrieval_failed" | "failed";
   /** 取得したスライドデックの共有URL(ベースURL)。 */
   mangaDeckUrl?: string;
   /** デックURL取得の説明・失敗理由。 */

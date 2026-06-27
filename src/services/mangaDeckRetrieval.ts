@@ -1,7 +1,12 @@
 import { config } from "../config.js";
 import { updateMangaJob } from "./mangaJobStore.js";
 import { fetchMangaDeckUrl, type MangaDeckFetchResult } from "./mangaDeckUrlFetcher.js";
-import { upsertMangaArtifact } from "./firebaseArticleStore.js";
+import {
+  clearArtifactDiagnostic,
+  upsertArtifactDiagnostic,
+  upsertMangaArtifact,
+  type ArtifactStage
+} from "./firebaseArticleStore.js";
 import { notifyMangaDeckReady, notifyMangaDeckFailed } from "./slackNotifier.js";
 import type { MangaJob } from "../types/manga.js";
 
@@ -31,6 +36,12 @@ export async function fetchAndRegisterMangaDeck(input: FetchAndRegisterMangaDeck
 
   if (!config.MANGA_DECK_AUTOFETCH) {
     log("デックURL取得: スキップ (MANGA_DECK_AUTOFETCH 未設定)");
+    if (input.notebookLmStatus === "executed") {
+      await writeRecoverableState(input, job, "url_retrieval", "URLを手動登録してください", {
+        code: "MANGA_DECK_AUTOFETCH_DISABLED",
+        detail: "MANGA_DECK_AUTOFETCH 未設定"
+      });
+    }
     return;
   }
   if (input.notebookLmStatus !== "executed") {
@@ -60,12 +71,24 @@ export async function fetchAndRegisterMangaDeck(input: FetchAndRegisterMangaDeck
       return;
     }
 
-    // pending(リトライ上限)/ failed はどちらもエラー通知。
+    // 生成待ち上限・生成失敗・URL取得失敗はいずれも手動で継続できる状態として公開する。
     const detail =
       result.status === "pending"
         ? `スライド生成が${config.MANGA_DECK_MAX_RETRIES}回の再確認後も完了しませんでした`
         : result.detail;
     await updateMangaJob(job, { mangaDeckStatus: result.status, mangaDeckDetail: detail });
+    const stage: ArtifactStage = result.status === "retrieval_failed" ? "url_retrieval" : "deck_generation";
+    const statusMessage =
+      stage === "url_retrieval" ? "URLの自動取得に失敗しました。手動で登録してください" : "デック生成状況を確認してください";
+    await writeRecoverableState(input, job, stage, statusMessage, {
+      code:
+        result.status === "pending"
+          ? "MANGA_DECK_GENERATION_TIMEOUT"
+          : result.status === "generation_failed"
+            ? "MANGA_DECK_GENERATION_FAILED"
+            : "MANGA_DECK_URL_RETRIEVAL_FAILED",
+      detail
+    });
     log(`デックURL取得: 失敗 (${detail})`);
     await notifyMangaDeckFailed({
       channelId: input.channelId,
@@ -77,6 +100,10 @@ export async function fetchAndRegisterMangaDeck(input: FetchAndRegisterMangaDeck
     // 想定外の例外も隔離して通知する(漫画生成本体は既に完了している)。
     const message = error instanceof Error ? error.message : String(error);
     await updateMangaJob(job, { mangaDeckStatus: "failed", mangaDeckDetail: message }).catch(() => {});
+    await writeRecoverableState(input, job, "url_retrieval", "URLの自動取得に失敗しました。手動で登録してください", {
+      code: "MANGA_DECK_RETRIEVAL_EXCEPTION",
+      detail: message
+    });
     log(`デックURL取得: 例外で失敗 (${message})`);
     await notifyMangaDeckFailed({
       channelId: input.channelId,
@@ -101,6 +128,7 @@ async function registerAndNotify(
       status: "completed",
       title: job.title
     });
+    await clearArtifactDiagnostic(job.url, "manga");
     await updateMangaJob(job, { mangaDeckStatus: "fetched", mangaDeckUrl: deckUrl, mangaDeckDetail: "" });
     log(`デックURL取得: 完了。Firebase に登録しました (${deckUrl})`);
     await notifyMangaDeckReady({
@@ -125,5 +153,36 @@ async function registerAndNotify(
       jobId: job.id,
       error: `Firebase 登録に失敗(URL=${deckUrl}): ${message}`
     }).catch((e) => log(`Slack 通知に失敗: ${e}`));
+  }
+}
+
+async function writeRecoverableState(
+  input: FetchAndRegisterMangaDeckInput,
+  job: MangaJob,
+  stage: ArtifactStage,
+  statusMessage: string,
+  diagnostic: { code: string; detail: string }
+): Promise<void> {
+  try {
+    await upsertMangaArtifact({
+      articleUrl: job.url,
+      deckUrl: "",
+      status: "action_required",
+      stage,
+      statusMessage,
+      title: job.title
+    });
+    await upsertArtifactDiagnostic({
+      articleUrl: job.url,
+      artifactType: "manga",
+      status: "action_required",
+      stage,
+      code: diagnostic.code,
+      detail: diagnostic.detail,
+      jobId: job.id
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    (input.logger ?? (() => {}))(`Firebase manga recoverable status update failed: ${message}`);
   }
 }
