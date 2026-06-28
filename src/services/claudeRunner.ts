@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
@@ -97,6 +97,17 @@ export type ClaudeJson = {
   session_id?: string;
 };
 
+export class ClaudeTimeoutError extends Error {
+  constructor(
+    readonly timeoutMs: number,
+    readonly stdout: string,
+    readonly stderr: string
+  ) {
+    super(`claude exec timed out after ${timeoutMs}ms`);
+    this.name = "ClaudeTimeoutError";
+  }
+}
+
 export function parseClaudeJson(stdout: string): ClaudeJson {
   const trimmed = stdout.trim();
   try {
@@ -144,8 +155,9 @@ export function spawnClaude(
     const timeout = setTimeout(() => {
       if (settled) return;
       settled = true;
-      child.kill();
-      reject(new Error(`claude exec timed out after ${timeoutMs}ms`));
+      void terminateProcessTree(child).finally(() => {
+        reject(new ClaudeTimeoutError(timeoutMs, stdout, stderr));
+      });
     }, timeoutMs);
 
     child.stdout?.on("data", (chunk: Buffer) => {
@@ -170,5 +182,43 @@ export function spawnClaude(
     });
 
     child.stdin?.end(prompt, "utf8");
+  });
+}
+
+export async function terminateProcessTree(child: ChildProcess): Promise<void> {
+  if (process.platform !== "win32" || child.pid === undefined) {
+    child.kill("SIGKILL");
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    let finished = false;
+    let killTimeout: NodeJS.Timeout;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(killTimeout);
+      resolve();
+    };
+    const killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
+      shell: false,
+      windowsHide: true
+    });
+    killTimeout = setTimeout(() => {
+      killer.kill();
+      child.kill();
+      finish();
+    }, 5_000);
+
+    killer.once("error", () => {
+      child.kill();
+      finish();
+    });
+    killer.once("close", (exitCode) => {
+      if (exitCode !== 0) {
+        child.kill();
+      }
+      finish();
+    });
   });
 }

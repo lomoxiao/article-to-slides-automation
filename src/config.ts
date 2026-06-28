@@ -70,8 +70,10 @@ const envSchema = z.object({
   MANGA_DECK_RETRY_WAIT_MS: z.coerce.number().int().positive().default(60_000),
   // 追加待機+再確認の最大回数。これを超えても未完了なら Slack へエラー通知する。
   MANGA_DECK_MAX_RETRIES: z.coerce.number().int().nonnegative().default(3),
+  // URL取得エージェントが共有UIの探索を続けないよう、試行ごとのターン数を制限する。
+  MANGA_DECK_FETCH_MAX_TURNS: z.coerce.number().int().positive().default(20),
   // 1回のデックURL取得(claude --chrome)の上限時間。
-  MANGA_DECK_FETCH_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
+  MANGA_DECK_FETCH_TIMEOUT_MS: z.coerce.number().int().positive().default(240_000),
   GOOGLE_SLIDES_TEMPLATE_ID: z.string().optional(),
   GAS_WEB_APP_URL: z.string().optional(),
   TAVILY_API_KEY: z.string().optional(),

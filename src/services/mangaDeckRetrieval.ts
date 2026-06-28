@@ -1,6 +1,6 @@
 import { config } from "../config.js";
 import { updateMangaJob } from "./mangaJobStore.js";
-import { fetchMangaDeckUrl, type MangaDeckFetchResult } from "./mangaDeckUrlFetcher.js";
+import { fetchMangaDeckUrl, shouldRetryMangaDeckFetch, type MangaDeckFetchResult } from "./mangaDeckUrlFetcher.js";
 import {
   clearArtifactDiagnostic,
   upsertArtifactDiagnostic,
@@ -56,10 +56,11 @@ export async function fetchAndRegisterMangaDeck(input: FetchAndRegisterMangaDeck
     let result: MangaDeckFetchResult = await fetchMangaDeckUrl({ jobDir: job.jobDir, logger: log });
 
     let retries = 0;
-    while (result.status === "pending" && retries < config.MANGA_DECK_MAX_RETRIES) {
+    while (shouldRetryMangaDeckFetch(result) && retries < config.MANGA_DECK_MAX_RETRIES) {
       retries += 1;
+      const reason = result.status === "pending" ? "まだ生成中" : "一時的なURL取得失敗";
       log(
-        `デックURL取得: まだ生成中。${Math.round(config.MANGA_DECK_RETRY_WAIT_MS / 1000)}秒待機して再確認します ` +
+        `デックURL取得: ${reason}。${Math.round(config.MANGA_DECK_RETRY_WAIT_MS / 1000)}秒待機して再確認します ` +
           `(${retries}/${config.MANGA_DECK_MAX_RETRIES})`
       );
       await sleep(config.MANGA_DECK_RETRY_WAIT_MS);

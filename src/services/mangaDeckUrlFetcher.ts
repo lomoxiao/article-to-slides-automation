@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
-import { parseClaudeJson, spawnClaude } from "./claudeRunner.js";
+import { ClaudeTimeoutError, parseClaudeJson, spawnClaude } from "./claudeRunner.js";
 
 export type MangaDeckFetchStatus = "fetched" | "pending" | "generation_failed" | "retrieval_failed";
 
@@ -11,6 +12,8 @@ export type MangaDeckFetchResult = {
   url?: string;
   /** 結果の説明(マーカー行など。ログ・通知に出す)。 */
   detail: string;
+  /** 一時的なChrome接続失敗など、同じジョブ内で再試行してよい失敗。 */
+  retryable?: boolean;
 };
 
 type FetchMangaDeckInput = {
@@ -29,12 +32,13 @@ const URL_MARKER = "NBLM_DECK_URL:";
 const PENDING_MARKER = "NBLM_DECK_PENDING";
 const GENERATION_FAIL_MARKER = "NBLM_DECK_GENERATION_FAILED";
 const RETRIEVAL_FAIL_MARKER = "NBLM_DECK_URL_FAILED";
+const SHORT_RETRIEVAL_FAIL_MARKER = "NBLM_URL_FAILED";
 const LEGACY_FAIL_MARKER = "NBLM_DECK_FAILED";
 
 /**
  * 接続済み Chrome 経由で NotebookLM を操作し、固定ノートブックの Studio 最上位(=最新)
  * スライドデックの状態を1回だけ確認する。
- * - 完了済みなら「共有」→「リンクをコピー」→ クリップボード読み出しでベースURLを取得し fetched。
+ * - 完了済みならノートブックIDと成果物要素のIDからベースURLを構築し fetched。
  * - まだ生成中なら pending。完了デックが無い/未ログイン/想定外は failed。
  * - 待機・リトライは呼び出し側(mangaDeckRetrieval)が制御する。本関数は単発の確認。
  * - 例外は投げず、status:"failed" として返す(呼び出し側で隔離・通知する想定)。
@@ -44,6 +48,7 @@ const LEGACY_FAIL_MARKER = "NBLM_DECK_FAILED";
 export async function fetchMangaDeckUrl(input: FetchMangaDeckInput): Promise<MangaDeckFetchResult> {
   const log = input.logger ?? (() => {});
   const notebookName = input.notebookName ?? config.MANGA_NOTEBOOKLM_NAME;
+  const sessionId = randomUUID();
 
   const args = [
     "-p",
@@ -54,11 +59,15 @@ export async function fetchMangaDeckUrl(input: FetchMangaDeckInput): Promise<Man
     "bypassPermissions",
     "--model",
     config.CLAUDE_MODEL,
+    "--max-turns",
+    String(config.MANGA_DECK_FETCH_MAX_TURNS),
+    "--session-id",
+    sessionId,
     "--disallowedTools",
     ...DISALLOWED_TOOLS
   ];
 
-  const prompt = buildPrompt(notebookName);
+  const prompt = buildMangaDeckFetchPrompt(notebookName);
   const inputPath = path.join(input.jobDir, "claude-deckfetch-input.md");
   const stdoutPath = path.join(input.jobDir, "claude-deckfetch-stdout.json");
   const stderrPath = path.join(input.jobDir, "claude-deckfetch-stderr.log");
@@ -70,20 +79,30 @@ export async function fetchMangaDeckUrl(input: FetchMangaDeckInput): Promise<Man
     await writeFile(stderrPath, stderr, "utf8");
 
     if (exitCode !== 0) {
-      return retrievalFail(log, `claude --chrome がコード ${exitCode} で終了しました。See ${stderrPath}`);
+      const detail = `claude --chrome がコード ${exitCode} で終了しました (session=${sessionId})。See ${stderrPath}`;
+      return retrievalFail(log, detail, isTransientChromeFailure(`${stdout}\n${stderr}`));
     }
 
     const parsed = parseClaudeJson(stdout);
     if (parsed.is_error) {
-      return retrievalFail(log, `claude --chrome がエラーを返しました (${parsed.subtype ?? "unknown"})。See ${stdoutPath}`);
+      const detail = `claude --chrome がエラーを返しました (${parsed.subtype ?? "unknown"}, session=${sessionId})。See ${stdoutPath}`;
+      return retrievalFail(log, detail, isTransientChromeFailure(stdout));
     }
 
     const result = typeof parsed.result === "string" ? parsed.result : "";
     return classifyMangaDeckFetchResult(log, result, stdoutPath);
   } catch (error) {
     const message = error instanceof Error ? error.stack ?? error.message : String(error);
-    await writeFile(path.join(input.jobDir, "claude-deckfetch-error.log"), `${message}\n`, "utf8");
-    return retrievalFail(log, error instanceof Error ? error.message : String(error));
+    await writeFile(path.join(input.jobDir, "claude-deckfetch-error.log"), `${message}\nsessionId=${sessionId}\n`, "utf8");
+    if (error instanceof ClaudeTimeoutError) {
+      await Promise.all([
+        writeFile(path.join(input.jobDir, "claude-deckfetch-stdout.partial.log"), error.stdout, "utf8"),
+        writeFile(path.join(input.jobDir, "claude-deckfetch-stderr.partial.log"), error.stderr, "utf8")
+      ]);
+      return retrievalFail(log, `${error.message} (session=${sessionId})`, true);
+    }
+    const detail = error instanceof Error ? error.message : String(error);
+    return retrievalFail(log, `${detail} (session=${sessionId})`, isTransientChromeFailure(detail));
   }
 }
 
@@ -97,10 +116,8 @@ export function classifyMangaDeckFetchResult(
 
   if (markerLine?.startsWith(URL_MARKER)) {
     const raw = markerLine.slice(URL_MARKER.length).trim();
-    // 防御的にクエリ(utm 等)を除去。クエリ文字列はエージェント出力フィルタに弾かれうるため、
-    // プロンプト側でも除去を指示しているが、念のため Node 側でも切り落とす。
-    const url = raw.split("?")[0]?.trim() ?? "";
-    if (!/^https?:\/\//i.test(url)) {
+    const url = normalizeNotebookLmArtifactUrl(raw);
+    if (!url) {
       return retrievalFail(log, `デックURLの形式が不正です: ${raw}。See ${stdoutPath}`);
     }
     log(`NotebookLM: デックURLを取得しました (${url})`);
@@ -113,7 +130,11 @@ export function classifyMangaDeckFetchResult(
   if (markerLine?.startsWith(GENERATION_FAIL_MARKER)) {
     return generationFail(log, markerLine);
   }
-  if (markerLine?.startsWith(RETRIEVAL_FAIL_MARKER) || markerLine?.startsWith(LEGACY_FAIL_MARKER)) {
+  if (
+    markerLine?.startsWith(RETRIEVAL_FAIL_MARKER) ||
+    markerLine?.startsWith(SHORT_RETRIEVAL_FAIL_MARKER) ||
+    markerLine?.startsWith(LEGACY_FAIL_MARKER)
+  ) {
     return retrievalFail(log, markerLine);
   }
 
@@ -134,6 +155,7 @@ function extractMarkerLine(result: string): string | undefined {
       line.startsWith(PENDING_MARKER) ||
       line.startsWith(GENERATION_FAIL_MARKER) ||
       line.startsWith(RETRIEVAL_FAIL_MARKER) ||
+      line.startsWith(SHORT_RETRIEVAL_FAIL_MARKER) ||
       line.startsWith(LEGACY_FAIL_MARKER)
     ) {
       return line;
@@ -147,37 +169,127 @@ function generationFail(log: (m: string) => void, detail: string): MangaDeckFetc
   return { status: "generation_failed", detail };
 }
 
-function retrievalFail(log: (m: string) => void, detail: string): MangaDeckFetchResult {
+function retrievalFail(log: (m: string) => void, detail: string, retryable = false): MangaDeckFetchResult {
   log(`NotebookLM: デックURL取得失敗 (${detail})`);
-  return { status: "retrieval_failed", detail };
+  return { status: "retrieval_failed", detail, ...(retryable ? { retryable: true } : {}) };
 }
 
-function buildPrompt(notebookName: string): string {
+export function normalizeNotebookLmArtifactUrl(raw: string): string | undefined {
+  try {
+    const url = new URL(raw);
+    const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+    if (
+      url.protocol !== "https:" ||
+      url.hostname !== "notebooklm.google.com" ||
+      !new RegExp(`^/notebook/${uuid}/artifact/${uuid}/?$`, "i").test(url.pathname)
+    ) {
+      return undefined;
+    }
+    url.search = "";
+    url.hash = "";
+    url.pathname = url.pathname.replace(/\/$/, "");
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+export function isTransientChromeFailure(text: string): boolean {
+  return /(?:browser extension|claude in chrome).*(?:not connected|unavailable)|tool call timed out|connection.*closed|error_max_turns|maximum number of turns|reached max turns/i.test(
+    text
+  );
+}
+
+export function shouldRetryMangaDeckFetch(result: MangaDeckFetchResult): boolean {
+  return result.status === "pending" || result.retryable === true;
+}
+
+export const MANGA_DECK_DOM_SCRIPT = String.raw`const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const notebookMatch = location.pathname.match(new RegExp("^/notebook/(" + uuid + ")", "i"));
+let result = null;
+
+if (!notebookMatch) {
+  result = { status: "url_failed", reason: "NotebookLMのノートブックURLが開かれていません" };
+}
+
+let firstItem = document.querySelector("artifact-library-item");
+let labelledElement = firstItem?.querySelector('[aria-labelledby^="artifact-labels-"]')
+  ?? document.querySelector('[aria-labelledby^="artifact-labels-"]');
+
+if (!result && !labelledElement) {
+  let studioTab = null;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    studioTab = [...document.querySelectorAll('[role="tab"], button')]
+      .find((tab) => tab.textContent?.trim() === "Studio");
+    if (studioTab) break;
+    await sleep(250);
+  }
+  if (!studioTab) {
+    result = { status: "url_failed", reason: "Studioタブが見つかりません" };
+  } else if (studioTab.getAttribute("aria-selected") !== "true") {
+    studioTab.click();
+  }
+}
+
+if (!result) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    firstItem = document.querySelector("artifact-library-item");
+    labelledElement = firstItem?.querySelector('[aria-labelledby^="artifact-labels-"]')
+      ?? document.querySelector('[aria-labelledby^="artifact-labels-"]');
+    if (labelledElement) break;
+    await sleep(250);
+  }
+}
+
+if (!result && !labelledElement) {
+  const pageText = document.body?.innerText ?? "";
+  if (/(生成中|作成中|処理中)/.test(pageText)) {
+    result = { status: "pending" };
+  } else if (/(生成に失敗|生成エラー)/.test(pageText)) {
+    result = { status: "generation_failed", reason: "画面に生成失敗が表示されています" };
+  } else {
+    result = { status: "url_failed", reason: "最新成果物のaria-labelledbyが見つかりません" };
+  }
+}
+
+if (!result && labelledElement) {
+  const labelledBy = labelledElement.getAttribute("aria-labelledby") ?? "";
+  const artifactMatch = labelledBy.match(new RegExp("^artifact-labels-(" + uuid + ")$", "i"));
+  if (!artifactMatch) {
+    const itemText = firstItem?.textContent ?? labelledElement.textContent ?? "";
+    if (/(生成中|作成中|処理中)/.test(itemText)) {
+      result = { status: "pending" };
+    } else if (/(生成に失敗|生成エラー)/.test(itemText)) {
+      result = { status: "generation_failed", reason: itemText.trim().slice(0, 200) };
+    } else {
+      result = { status: "url_failed", reason: "最新成果物のartifact IDが見つかりません" };
+    }
+  } else {
+    result = {
+      status: "ready",
+      url: "https://notebooklm.google.com/notebook/" + notebookMatch[1] + "/artifact/" + artifactMatch[1]
+    };
+  }
+}
+
+JSON.stringify(result);`;
+
+export function buildMangaDeckFetchPrompt(notebookName: string): string {
   return [
     "あなたは接続済みの Google Chrome で NotebookLM を操作するエージェントです。",
-    "以下の手順を上から順に、正確に、指示された操作のみ実行してください。勝手なクリックや余計な操作は禁止です。",
-    "目的は「Studio 最上位(最新)のスライドデックの状態を確認し、完了していれば共有URLを取得する」ことです。",
+    `対象ノートブックは「${notebookName}」です。`,
+    "tabs_context_mcpを1回だけ実行し、既に開いているNotebookLMの /notebook/<UUID> タブIDを取得してください。",
+    "次にjavascript_toolをaction=javascript_execで1回だけ実行してください。textには下記コードを一字も変更せず指定します。",
+    "read_page、find、navigate、追加のJavaScript、共有操作、Clipboard API、DOM探索は禁止です。",
     "",
-    "手順:",
-    "1. https://notebooklm.google.com を開く。",
-    `2. ノートブック一覧から「${notebookName}」という名前のノートブックを開く。`,
-    "3. 画面右側の「Studio」パネルを表示する。",
-    "4. Studio 内で、最上位(=最新)にあるスライドデックの成果物を特定する。",
-    "5. そのデックがまだ「生成中 / 作成中 / 処理中」(プログレス表示で開けない/共有できない)であれば、",
-    "   余計な操作をせず、最後の行に「NBLM_DECK_PENDING」とだけ出力して終了する。",
-    "6. 最新のデックが存在しない、またはデックに生成エラー・生成失敗が明示されている場合は、最後の行に",
-    "   「NBLM_DECK_GENERATION_FAILED: <画面に表示された理由>」と出力して終了する。",
-    "7. デックが生成完了している(開ける/共有できる)場合のみ次に進む:",
-    "   a. そのデックの「共有」メニュー/ボタンを開く。",
-    "   b. 「リンクをコピー」または「コピー」を押して共有URLをクリップボードにコピーする。",
-    "   c. navigator.clipboard.readText() に相当する方法でクリップボードのテキストを取得する。",
-    "   d. 取得したURLから「?」以降のクエリ文字列(utm_* など)を取り除き、ベースURL",
-    "      (https://notebooklm.google.com/notebook/<id>/artifact/<id> の形)だけにする。",
-    "      ※ クエリ文字列を付けたまま出力すると出力フィルタに弾かれるため、必ず「?」以降は除くこと。",
-    "   e. 最後の行に「NBLM_DECK_URL: <ベースURL>」とだけ出力する。",
-    "8. デック生成完了後に共有操作やURL取得ができない、未ログイン、要素が見つからない等で続行できない場合は、",
-    "   最後の行に「NBLM_DECK_URL_FAILED: <理由>」と出力する。",
+    MANGA_DECK_DOM_SCRIPT,
     "",
-    "出力の最後の行は必ず NBLM_DECK_URL / NBLM_DECK_PENDING / NBLM_DECK_GENERATION_FAILED / NBLM_DECK_URL_FAILED のいずれかにすること。"
+    "JavaScriptの返却値だけを次の規則で変換し、対応する1行だけを出力して終了してください。",
+    "ready: NBLM_DECK_URL: <url>",
+    "pending: NBLM_DECK_PENDING",
+    "generation_failed: NBLM_DECK_GENERATION_FAILED: <reason>",
+    "url_failed: NBLM_DECK_URL_FAILED: <reason>",
+    "返却後の確認、説明、追加ツール呼び出しは禁止です。"
   ].join("\n");
 }
