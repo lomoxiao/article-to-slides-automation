@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowledge-workflows.local/manga-plan-2.1.schema.json",
+  "title": "MangaPlan 2.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "contractVersion", "schemaHash", "jobId", "title", "problem", "panels", "warnings"],
+  "properties": {
+    "schemaVersion": { "const": "2.1" },
+    "contractVersion": { "const": "2.1" },
+    "schemaHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "jobId": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "problem": {
+      "type": "object", "additionalProperties": false,
+      "required": ["text", "studentAnswer", "correctAnswer"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "studentAnswer": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "correctAnswer": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "panels": {
+      "type": "array", "minItems": 6, "maxItems": 6,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["panelNumber", "learningPurpose", "scene", "solutionStepId", "characters", "characterPose", "characterExpression", "background", "props", "dialogue", "narration", "visualAid", "formula", "emphasisWords", "layout", "assetIds"],
+        "properties": {
+          "panelNumber": { "type": "integer", "minimum": 1, "maximum": 6 },
+          "learningPurpose": { "$ref": "#/$defs/shortText" },
+          "scene": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "solutionStepId": { "$ref": "#/$defs/shortText" },
+          "characters": { "type": "array", "minItems": 1, "maxItems": 4, "items": { "$ref": "#/$defs/shortText" } },
+          "characterPose": { "type": "object", "additionalProperties": { "type": "string", "maxLength": 100 } },
+          "characterExpression": { "type": "object", "additionalProperties": { "type": "string", "maxLength": 100 } },
+          "background": { "$ref": "#/$defs/shortText" },
+          "props": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/shortText" } },
+          "dialogue": { "type": "array", "minItems": 1, "maxItems": 6, "items": { "$ref": "#/$defs/dialogue" } },
+          "narration": { "type": ["string", "null"], "maxLength": 500 },
+          "visualAid": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/table" }, { "$ref": "#/$defs/barModel" }, { "$ref": "#/$defs/fractionBar" }, { "$ref": "#/$defs/numberLine" }, { "$ref": "#/$defs/comparison" }] },
+          "formula": { "type": "array", "maxItems": 10, "items": { "type": "string", "maxLength": 100 } },
+          "emphasisWords": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 50 } },
+          "layout": { "type": "object", "additionalProperties": false, "required": ["size", "characterSide", "visualAidPosition"], "properties": { "size": { "enum": ["small", "medium", "large"] }, "characterSide": { "enum": ["left", "right"] }, "visualAidPosition": { "enum": ["center", "bottom", "right"] } } },
+          "assetIds": { "type": "array", "maxItems": 10, "items": { "$ref": "#/$defs/shortText" } }
+        }
+      }
+    },
+    "warnings": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 500 } }
+  },
+  "$defs": {
+    "shortText": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "rational": { "type": "object", "additionalProperties": false, "required": ["numerator", "denominator"], "properties": { "numerator": { "type": "integer" }, "denominator": { "type": "integer", "minimum": 1 } } },
+    "position": { "enum": ["left", "center", "right", "bottom"] },
+    "dialogue": { "type": "object", "additionalProperties": false, "required": ["speaker", "text", "tone"], "properties": { "speaker": { "$ref": "#/$defs/shortText" }, "text": { "type": "string", "minLength": 1, "maxLength": 500 }, "tone": { "enum": ["normal", "question", "encourage", "discovery"] } } },
+    "mark": { "type": "object", "additionalProperties": false, "required": ["value"], "properties": { "value": { "$ref": "#/$defs/rational" }, "label": { "$ref": "#/$defs/shortText" } } },
+    "table": { "type": "object", "additionalProperties": false, "required": ["type", "position", "headers", "rows"], "properties": { "type": { "const": "table" }, "position": { "$ref": "#/$defs/position" }, "headers": { "type": "array", "minItems": 1, "maxItems": 10, "items": { "$ref": "#/$defs/shortText" } }, "rows": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "type": "array", "minItems": 1, "maxItems": 10, "items": { "$ref": "#/$defs/shortText" } } } },
+    "barModel": { "type": "object", "additionalProperties": false, "required": ["type", "position", "total", "groupCount", "perGroup"], "properties": { "type": { "const": "bar_model" }, "position": { "$ref": "#/$defs/position" }, "total": { "$ref": "#/$defs/rational" }, "groupCount": { "type": "integer", "minimum": 1, "maximum": 100 }, "perGroup": { "$ref": "#/$defs/rational" } } },
+    "fractionBar": { "type": "object", "additionalProperties": false, "required": ["type", "position", "numerator", "denominator"], "properties": { "type": { "const": "fraction_bar" }, "position": { "$ref": "#/$defs/position" }, "numerator": { "type": "integer", "minimum": 0 }, "denominator": { "type": "integer", "minimum": 1, "maximum": 100 } } },
+    "numberLine": { "type": "object", "additionalProperties": false, "required": ["type", "position", "min", "max", "tickCount", "marks"], "properties": { "type": { "const": "number_line" }, "position": { "$ref": "#/$defs/position" }, "min": { "$ref": "#/$defs/rational" }, "max": { "$ref": "#/$defs/rational" }, "tickCount": { "type": "integer", "minimum": 1, "maximum": 20 }, "marks": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/mark" } } } },
+    "comparison": { "type": "object", "additionalProperties": false, "required": ["type", "position", "left", "right", "leftLabel", "rightLabel", "unit", "operator", "ratio"], "properties": { "type": { "const": "comparison" }, "position": { "$ref": "#/$defs/position" }, "left": { "$ref": "#/$defs/rational" }, "right": { "$ref": "#/$defs/rational" }, "leftLabel": { "$ref": "#/$defs/shortText" }, "rightLabel": { "$ref": "#/$defs/shortText" }, "unit": { "type": "string", "maxLength": 30 }, "operator": { "enum": ["<", "=", ">"] }, "ratio": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/rational" }] } } }
+  }
+}
+

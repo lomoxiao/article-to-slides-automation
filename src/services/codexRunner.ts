@@ -18,6 +18,8 @@ export type RunCodexPromptInput = {
   logLabel: string;
   codexHome?: string;
   resumeLast?: boolean;
+  /** Optional strict JSON Schema. Existing callers remain text-only and unchanged. */
+  outputSchema?: Record<string, unknown>;
 };
 
 export type RunCodexPromptResult = {
@@ -27,6 +29,22 @@ export type RunCodexPromptResult = {
   codexHome: string;
   lastMessagePath: string;
 };
+
+export async function runCodexImagePrompt(input: RunCodexPromptInput & { imagePath: string }): Promise<RunCodexPromptResult> {
+  const lastMessagePath = path.join(input.jobDir, `codex-${input.logLabel}-last-message.txt`);
+  const result = await runCodexExec(input.prompt, input.jobDir, {
+    codexHome: input.codexHome,
+    lastMessagePath,
+    promptFilePath: path.join(input.jobDir, `codex-${input.logLabel}-input.md`),
+    imagePaths: [path.resolve(input.imagePath)]
+  });
+  await writeFile(path.join(input.jobDir, `codex-${input.logLabel}-stdout.log`), result.stdout, "utf8");
+  await writeFile(path.join(input.jobDir, `codex-${input.logLabel}-stderr.log`), result.stderr, "utf8");
+  if (result.exitCode !== 0) throw new Error(`codex image analysis failed with exit code ${result.exitCode}`);
+  const output = await readFile(lastMessagePath, "utf8");
+  if (!output.trim()) throw new Error("codex image analysis returned an empty result");
+  return { result: output, stdout: result.stdout, stderr: result.stderr, codexHome: result.codexHome, lastMessagePath };
+}
 
 export async function runCodexForSlideJob(input: RunCodexForJobInput): Promise<void> {
   const prompt = `Read and follow the task file at ${input.promptPath}.
@@ -68,13 +86,16 @@ export async function runCodexPrompt(input: RunCodexPromptInput): Promise<RunCod
   const stdoutPath = path.join(input.jobDir, `codex-${input.logLabel}-stdout.log`);
   const stderrPath = path.join(input.jobDir, `codex-${input.logLabel}-stderr.log`);
   const lastMessagePath = path.join(input.jobDir, `codex-${input.logLabel}-last-message.txt`);
+  const outputSchemaPath = input.outputSchema ? path.join(input.jobDir, `codex-${input.logLabel}-output-schema.json`) : undefined;
 
   try {
+    if (outputSchemaPath) await writeFile(outputSchemaPath, `${JSON.stringify(input.outputSchema, null, 2)}\n`, "utf8");
     const result = await runCodexExec(prompt, input.jobDir, {
       codexHome: input.codexHome,
       lastMessagePath,
       promptFilePath: inputPath,
-      resumeLast: input.resumeLast
+      resumeLast: input.resumeLast,
+      outputSchemaPath
     });
 
     await writeFile(stdoutPath, result.stdout, "utf8");
@@ -168,11 +189,13 @@ function extractChartOverrideSection(task: string): string {
   return task.slice(idx).trim();
 }
 
-type RunCodexExecOptions = {
+export type RunCodexExecOptions = {
   codexHome?: string;
   lastMessagePath?: string;
   promptFilePath?: string;
   resumeLast?: boolean;
+  imagePaths?: string[];
+  outputSchemaPath?: string;
 };
 
 async function runCodexExec(
@@ -187,32 +210,7 @@ async function runCodexExec(
   await writeFile(promptFilePath, prompt, "utf8");
 
   return new Promise((resolve, reject) => {
-    const args = options.resumeLast
-      ? [
-          "exec",
-          "resume",
-          "--last",
-          "--skip-git-repo-check",
-          "--model",
-          config.CODEX_MODEL,
-          "--output-last-message",
-          lastMessagePath,
-          "-"
-        ]
-      : [
-          "exec",
-          "--skip-git-repo-check",
-          "-C",
-          process.cwd(),
-          "--model",
-          config.CODEX_MODEL,
-          "--output-last-message",
-          lastMessagePath,
-          "--sandbox",
-          config.CODEX_EXEC_SANDBOX,
-          ...(config.CODEX_EXEC_FULL_AUTO ? ["--full-auto"] : []),
-          "-"
-        ];
+    const args = buildCodexExecArgs(options, lastMessagePath);
 
     let child;
     try {
@@ -270,6 +268,37 @@ async function runCodexExec(
       resolve({ exitCode, stdout, stderr, codexHome });
     });
   });
+}
+
+export function buildCodexExecArgs(options: RunCodexExecOptions, lastMessagePath: string): string[] {
+  return options.resumeLast
+      ? [
+          "exec",
+          "resume",
+          "--last",
+          "--skip-git-repo-check",
+          "--model",
+          config.CODEX_MODEL,
+          "--output-last-message",
+          lastMessagePath,
+          ...(options.outputSchemaPath ? ["--output-schema", options.outputSchemaPath] : []),
+          "-"
+        ]
+      : [
+          "exec",
+          "--skip-git-repo-check",
+          "-C",
+          process.cwd(),
+          "--model",
+          config.CODEX_MODEL,
+          "--output-last-message",
+          lastMessagePath,
+          "--sandbox",
+          config.CODEX_EXEC_SANDBOX,
+          ...(options.imagePaths ?? []).flatMap((imagePath) => ["--image", imagePath]),
+          ...(options.outputSchemaPath ? ["--output-schema", options.outputSchemaPath] : []),
+          "-"
+        ];
 }
 
 function extractJsonArray(text: string) {

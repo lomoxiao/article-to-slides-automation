@@ -6,6 +6,8 @@ import { runUrlToGasSlidesWorkflow } from "../workflows/urlToGasSlides.js";
 import { parseSlideArgs } from "../utils/parseSlideArgs.js";
 import { parseMangaSlackArgs } from "../utils/parseMangaSlackArgs.js";
 import { enqueueMangaGeneration } from "../services/mangaGenerationQueue.js";
+import { enqueueHomeworkMessage, isHomeworkMessage, parseWebHomeworkTrigger, processWebHomeworkJob } from "../services/homeworkJobService.js";
+import type { SlackHomeworkFile } from "../types/homework.js";
 
 const SLIDE_GENERATE_PREFIX = "[slide-generate]";
 const MANGA_GENERATE_PREFIX = "[manga-generate]";
@@ -35,12 +37,14 @@ type SlackMessageEvent = {
   channel?: string;
   ts?: string;
   client_msg_id?: string;
+  files?: SlackHomeworkFile[];
 };
 
 type EventsApiEnvelope = {
   event?: SlackMessageEvent;
   body?: {
     event?: SlackMessageEvent;
+    event_id?: string;
   };
   ack: () => Promise<void>;
 };
@@ -123,6 +127,17 @@ export async function startSlackSocketModeClient() {
       await safeAck(ack, eventDescription);
 
       if (!messageEvent) {
+        return;
+      }
+
+      const webHomeworkJobId = parseWebHomeworkTrigger(messageEvent.text);
+      if (webHomeworkJobId && messageEvent.channel === config.SLACK_HOMEWORK_CHANNEL_ID && messageEvent.bot_id) {
+        await processWebHomeworkJob(webHomeworkJobId);
+        return;
+      }
+
+      if (isHomeworkMessage(messageEvent)) {
+        await enqueueHomeworkMessage({ channel: messageEvent.channel, ts: messageEvent.ts, text: messageEvent.text, user: messageEvent.user, eventId: body?.event_id, files: messageEvent.files });
         return;
       }
 

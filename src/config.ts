@@ -11,6 +11,10 @@ const envSchema = z.object({
   SLACK_BOT_TOKEN: z.string().optional(),
   SLACK_SIGNING_SECRET: z.string().optional(),
   SLACK_COMPLETION_CHANNEL_ID: z.string().optional(),
+  SLACK_HOMEWORK_CHANNEL_ID: z.string().optional(),
+  HOMEWORK_REVIEW_BASE_URL: z.string().url().optional(),
+  HOMEWORK_OWNER_UID: z.string().optional(),
+  HOMEWORK_DRIVE_FOLDER_ID: z.string().optional(),
   AUTO_RUN_CODEX: z.coerce.boolean().default(true),
   CODEX_CLI_COMMAND: z.string()
     .default("codex")
@@ -27,7 +31,6 @@ const envSchema = z.object({
   CODEX_SOURCE_HOME: z.string().optional(),
   CODEX_MODEL: z.string().default("gpt-5.5"),
   CODEX_EXEC_SANDBOX: z.enum(["read-only", "workspace-write", "danger-full-access"]).default("workspace-write"),
-  CODEX_EXEC_FULL_AUTO: z.coerce.boolean().default(true),
   CODEX_EXEC_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
   // ⚠️ Do NOT set this. Verified 2026-06-23: setting ANTHROPIC_AUTH_TOKEN (or any
   // auth-override token) DISABLES the Claude in Chrome extension — `claude --chrome`

@@ -27,7 +27,10 @@ export function getDb(): Database {
   }
   const databaseURL = requireEnv("FIREBASE_DATABASE_URL");
   const serviceAccount = loadServiceAccount();
-  const app: App = getApps()[0] ?? initializeApp({ credential: cert(serviceAccount), databaseURL });
+  const app: App = getApps()[0] ?? initializeApp({
+    credential: cert(serviceAccount),
+    databaseURL
+  });
   cachedDb = getDatabase(app);
   return cachedDb;
 }
