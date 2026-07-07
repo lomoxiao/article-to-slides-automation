@@ -11,10 +11,6 @@ const envSchema = z.object({
   SLACK_BOT_TOKEN: z.string().optional(),
   SLACK_SIGNING_SECRET: z.string().optional(),
   SLACK_COMPLETION_CHANNEL_ID: z.string().optional(),
-  SLACK_HOMEWORK_CHANNEL_ID: z.string().optional(),
-  HOMEWORK_REVIEW_BASE_URL: z.string().url().optional(),
-  HOMEWORK_OWNER_UID: z.string().optional(),
-  HOMEWORK_DRIVE_FOLDER_ID: z.string().optional(),
   AUTO_RUN_CODEX: z.coerce.boolean().default(true),
   CODEX_CLI_COMMAND: z.string()
     .default("codex")
