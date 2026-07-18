@@ -18,6 +18,8 @@ export async function createPendingSlideJob(input: CreateSlideJobInput): Promise
     url: input.url,
     urls: input.urls,
     researchPrompt: input.researchPrompt,
+    sourceText: input.sourceText,
+    sourceTitle: input.sourceTitle,
     audience: input.audience,
     focus: input.focus,
     pages: input.pages,

@@ -11,6 +11,7 @@
     "google:oauth:code": "tsx src/scripts/saveGoogleOAuthCode.ts",
     "codex:preflight": "tsx src/scripts/codexPreflight.ts",
     "jobs:process": "tsx src/scripts/processSlideJob.ts",
+    "session:capture": "tsx src/scripts/captureSession.ts",
     "manga:outline": "tsx src/scripts/articleToMangaOutline.ts",
     "manga:check": "tsx src/scripts/checkMangaTemplates.ts",
     "slides:create": "tsx src/scripts/createSlidesFromOutline.ts",
@@ -22,7 +23,7 @@
   },
   "dependencies": {
     "@fastify/formbody": "^8.0.2",
-    "@local/content-extractor": "github:lomoxiao/content-extractor#v0.2.0",
+    "@local/content-extractor": "file:../content-extractor",
     "@slack/socket-mode": "^2.0.6",
     "@slack/web-api": "^7.9.3",
     "fastify": "^5.3.2",

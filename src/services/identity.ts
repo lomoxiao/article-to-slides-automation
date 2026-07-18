@@ -3,8 +3,12 @@ import { createHash } from "node:crypto";
 export type ArticleIdentity = {
   articleId: string;
   canonicalUrl: string;
-  sourceKind: "web" | "youtube";
+  sourceKind: "web" | "youtube" | "text";
 };
+
+// URLを持たないテキスト投入記事の合成canonical。articleIdと同値を埋め込むことで
+// URLキー前提の既存パイプライン(jobStore/artifact書き込み/診断)をそのまま流用する。
+const TEXT_CANONICAL_PATTERN = /^text:(txt_[0-9a-f]{12})$/;
 
 const TRACKING_QUERY_KEYS = new Set([
   "fbclid",
@@ -17,6 +21,15 @@ const TRACKING_QUERY_KEYS = new Set([
 ]);
 
 export function createArticleIdentity(rawUrl: string): ArticleIdentity {
+  const textMatch = rawUrl.trim().match(TEXT_CANONICAL_PATTERN);
+  if (textMatch) {
+    return {
+      articleId: textMatch[1],
+      canonicalUrl: rawUrl.trim(),
+      sourceKind: "text"
+    };
+  }
+
   const youtubeVideoId = extractYouTubeVideoId(rawUrl);
   if (youtubeVideoId) {
     const canonicalUrl = `https://www.youtube.com/watch?v=${youtubeVideoId}`;
@@ -33,6 +46,13 @@ export function createArticleIdentity(rawUrl: string): ArticleIdentity {
     canonicalUrl,
     sourceKind: "web"
   };
+}
+
+export function createTextArticleIdentity(text: string): ArticleIdentity {
+  // 同一本文の再投稿を同じ記事ノードへ収束させるため、改行差異だけは吸収する
+  const normalized = text.replace(/\r\n/g, "\n").trim();
+  const canonicalUrl = `text:txt_${shortHash(normalized)}`;
+  return createArticleIdentity(canonicalUrl);
 }
 
 export function normalizeSlidesUrl(url: string, presentationId?: string | null): string {

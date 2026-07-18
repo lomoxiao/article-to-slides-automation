@@ -12,9 +12,13 @@ const registerArticleInputSchema = z.object({
     .trim()
     .min(1, "url is required")
     .max(MAX_URL_LENGTH, "url is too long")
-    .refine((value) => /^https?:\/\//i.test(value), "url must start with http:// or https://"),
+    .refine(
+      (value) => /^https?:\/\//i.test(value) || /^text:txt_[0-9a-f]{12}$/.test(value),
+      "url must start with http:// or https:// (or be a text: canonical)"
+    ),
   title: z.string().trim().max(MAX_TEXT_LENGTH).optional(),
-  headline: z.string().trim().max(MAX_TEXT_LENGTH).optional()
+  headline: z.string().trim().max(MAX_TEXT_LENGTH).optional(),
+  registeredFrom: z.string().trim().max(64).optional()
 });
 
 export type RegisterArticleInput = z.input<typeof registerArticleInputSchema>;
@@ -22,7 +26,7 @@ export type RegisterArticleInput = z.input<typeof registerArticleInputSchema>;
 export type RegisterArticleResult = {
   articleId: string;
   canonicalUrl: string;
-  sourceKind: "web" | "youtube";
+  sourceKind: "web" | "youtube" | "text";
   isNew: boolean;
 };
 
@@ -74,7 +78,7 @@ export async function registerArticle(rawInput: RegisterArticleInput): Promise<R
       kind: identity.sourceKind,
       headline: chooseText(input.headline, existing?.source?.headline, "")
     },
-    registeredFrom: existing?.registeredFrom || "shortcut",
+    registeredFrom: existing?.registeredFrom || input.registeredFrom || "shortcut",
     lastRegisteredAt: now,
     updatedAt: now
   };
@@ -280,6 +284,17 @@ export async function upsertMangaArtifact(input: UpsertMangaArtifactInput): Prom
 
 export function shouldPreserveManualArtifact(artifact: ExistingArtifact | undefined): boolean {
   return artifact?.status === "completed" && artifact.origin === "manual" && artifact.locked === true;
+}
+
+const MAX_ARTICLE_SOURCE_LENGTH = 150_000;
+
+/** 抽出/投入された本文をリーダービュー用に保存する。viewerからは読み取り専用。 */
+export async function upsertArticleSource(articleUrl: string, markdown: string): Promise<void> {
+  const identity = createArticleIdentity(articleUrl);
+  await getDb().ref(`/articleSources/${identity.articleId}`).set({
+    markdown: markdown.slice(0, MAX_ARTICLE_SOURCE_LENGTH),
+    extractedAt: nowJstIso()
+  });
 }
 
 export type ArtifactDiagnosticInput = {

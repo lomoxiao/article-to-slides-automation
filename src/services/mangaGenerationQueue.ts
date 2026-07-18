@@ -6,6 +6,8 @@ import type { MangaTreatment } from "../types/manga.js";
 
 export type EnqueueMangaGenerationInput = {
   url: string;
+  sourceText?: string;
+  sourceTitle?: string;
   pages: number;
   genre?: string;
   artStyle: string;
@@ -40,7 +42,7 @@ async function writeQueuedViewerState(input: EnqueueMangaGenerationInput): Promi
       status: "processing",
       stage: "preparing",
       statusMessage: "漫画生成の開始を待っています",
-      title: input.focus
+      title: input.sourceTitle || input.focus
     });
     await clearArtifactDiagnostic(input.url, "manga");
   } catch (error) {
@@ -53,6 +55,8 @@ async function runMangaJob(input: EnqueueMangaGenerationInput): Promise<void> {
   try {
     const result = await runArticleToMangaJob({
       url: input.url,
+      sourceText: input.sourceText,
+      sourceTitle: input.sourceTitle,
       pages: input.pages,
       genre: input.genre,
       artStyle: input.artStyle,

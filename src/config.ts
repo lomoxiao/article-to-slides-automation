@@ -85,6 +85,17 @@ const envSchema = z.object({
   X_HEADLESS: z.preprocess(
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
     z.coerce.boolean().default(true)
+  ),
+  // ログイン必須サイト用のドメイン別Playwrightセッション(storageState)保存先。
+  WEB_SESSIONS_DIR: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().default(join(homedir(), ".content-extractor", "sessions"))
+  ),
+  // 最初からセッション取得するドメインのカンマ区切りリスト(例: "nikkei.com,toyokeizai.net")。
+  // 未指定でも、通常取得がペイウォール様かつセッションファイルが在るドメインは自動で再試行する。
+  WEB_LOGIN_REQUIRED_DOMAINS: z.preprocess(
+    (v) => (typeof v === "string" ? v : ""),
+    z.string().default("")
   )
 });
 

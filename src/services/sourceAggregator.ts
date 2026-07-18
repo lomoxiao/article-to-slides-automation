@@ -1,6 +1,7 @@
 import { extractContent, type ExtractorOptions } from "@local/content-extractor";
 import { config } from "../config.js";
 import type { SourceContent } from "../types.js";
+import { loadPaginationDomainRules, recordPaginationSuccess } from "./paginationDomainStore.js";
 
 export type MergedSourceContent = {
   sources: Array<{ url: string; title: string; body: string }>;
@@ -23,6 +24,33 @@ function buildExtractorOptions(): ExtractorOptions {
       sessionStatePath: config.X_SESSION_STATE_PATH,
       headless: config.X_HEADLESS,
       channel: "chrome"
+    },
+    // web記事の複数ページ巡回。ドメイン別の成功パターンを学習ストアから読み、
+    // 成功時に move-to-front で保存する。60kトランケートは連結後の本文に適用される。
+    pagination: {
+      domainRules: loadPaginationDomainRules(),
+      onPatternSuccess: recordPaginationSuccess
+    },
+    // ログイン必須サイトのセッション取得。セッションは npm run session:capture -- <domain> で保存。
+    playwrightSessions: {
+      dir: config.WEB_SESSIONS_DIR,
+      loginRequiredDomains: config.WEB_LOGIN_REQUIRED_DOMAINS.split(",")
+        .map((domain) => domain.trim())
+        .filter(Boolean),
+      headless: config.X_HEADLESS,
+      channel: "chrome"
+    }
+  };
+}
+
+/** fetchSourceDebug.ts 用: 進捗ログ付きの抽出オプション。 */
+export function buildDebugExtractorOptions(): ExtractorOptions {
+  return {
+    ...buildExtractorOptions(),
+    logger: {
+      info: (message) => console.log(`[extract] ${message}`),
+      warn: (message) => console.warn(`[extract] ${message}`),
+      error: (message) => console.error(`[extract] ${message}`)
     }
   };
 }

@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import { config } from "./config.js";
 import { registerSlackRoutes } from "./routes/slack.js";
 import { startSlackSocketModeClient } from "./slack/socketModeClient.js";
+import { startGenerationRequestWatcher } from "./services/generationRequestWatcher.js";
 
 const app = Fastify({
   logger: true
@@ -18,6 +19,17 @@ if (config.SLACK_APP_TOKEN) {
 } else {
   await registerSlackRoutes(app);
   app.log.info("SLACK_APP_TOKEN is not set; using legacy Slack HTTP webhook route");
+}
+
+try {
+  startGenerationRequestWatcher();
+  app.log.info("Generation request watcher started");
+} catch (error) {
+  app.log.warn(
+    `Generation request watcher not started (Firebase credentials missing?): ${
+      error instanceof Error ? error.message : String(error)
+    }`
+  );
 }
 
 await app.listen({

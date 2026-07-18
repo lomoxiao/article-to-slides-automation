@@ -5,6 +5,9 @@ export type SlideJob = {
   url?: string;
   urls?: string[];
   researchPrompt?: string;
+  /** テキスト投入モード: 本文を直接持ち、URL取得をスキップする。urlにはtext:canonicalが入る。 */
+  sourceText?: string;
+  sourceTitle?: string;
   audience?: string;
   focus?: string;
   pages?: number;
@@ -26,6 +29,8 @@ export type CreateSlideJobInput = {
   url?: string;
   urls?: string[];
   researchPrompt?: string;
+  sourceText?: string;
+  sourceTitle?: string;
   audience?: string;
   focus?: string;
   pages?: number;

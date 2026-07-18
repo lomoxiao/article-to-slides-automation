@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createArticleIdentity } from "./identity.js";
+import { createArticleIdentity, createTextArticleIdentity } from "./identity.js";
 
 /**
  * Golden vectors for the article-identity contract.
@@ -70,6 +70,25 @@ test("identity is deterministic", () => {
     const b = createArticleIdentity(vector.input);
     assert.deepEqual(a, b);
   }
+});
+
+test("text identity: canonical round-trips and newline variants converge", () => {
+  const identity = createTextArticleIdentity("タイトル行\r\n本文です。\r\n");
+  assert.match(identity.articleId, /^txt_[0-9a-f]{12}$/);
+  assert.equal(identity.canonicalUrl, `text:${identity.articleId}`);
+  assert.equal(identity.sourceKind, "text");
+
+  // CRLF/LF・末尾空白の差異は同一記事に収束する
+  const lfVariant = createTextArticleIdentity("タイトル行\n本文です。");
+  assert.deepEqual(identity, lfVariant);
+
+  // canonicalからの再計算(=パイプライン内での往復)が同じ識別に戻る
+  const roundTrip = createArticleIdentity(identity.canonicalUrl);
+  assert.deepEqual(roundTrip, identity);
+
+  // 本文が違えば別記事
+  const other = createTextArticleIdentity("別の本文");
+  assert.notEqual(other.articleId, identity.articleId);
 });
 
 /**

@@ -6,6 +6,8 @@ type UrlToGasSlidesInput = {
   url?: string;
   urls?: string[];
   researchPrompt?: string;
+  sourceText?: string;
+  sourceTitle?: string;
   audience?: string;
   focus?: string;
   pages?: number;
@@ -20,7 +22,7 @@ export async function runUrlToGasSlidesWorkflow(input: UrlToGasSlidesInput): Pro
   if (primaryUrl) {
     await upsertSlideArtifact({
       originalUrl: primaryUrl,
-      title: input.focus,
+      title: input.sourceTitle || input.focus,
       headline: input.focus,
       slidesStatus: "processing",
       stage: "slides_generation",

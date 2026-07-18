@@ -19,6 +19,9 @@ const DEFAULT_CHARACTER_SHEETS_DIR = path.join("manga-templates", "character-she
 
 export type RunArticleToMangaInput = {
   url: string;
+  /** テキスト投入モード: 本文を直接使い、URL抽出をスキップする(urlはtext:canonical)。 */
+  sourceText?: string;
+  sourceTitle?: string;
   pages: number;
   genre?: string;
   artStyle: string;
@@ -71,15 +74,22 @@ export async function runArticleToMangaJob(
   });
   let source;
   try {
-    source = await fetchSourceContent(input.url);
+    source = input.sourceText
+      ? {
+          url: input.url,
+          title: input.sourceTitle || input.sourceText.trim().split("\n")[0].slice(0, 80) || "テキスト投入",
+          text: input.sourceText.slice(0, 60_000)
+        }
+      : await fetchSourceContent(input.url);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const isSessionExpired = error instanceof Error && error.name === "SessionExpiredError";
     await writeMangaViewerState({
       articleUrl: input.url,
-      status: "failed",
+      status: isSessionExpired ? "action_required" : "failed",
       stage: "preparing",
-      statusMessage: "漫画生成の準備に失敗しました",
-      diagnostic: { code: "MANGA_PREPARATION_FAILED", detail: message },
+      statusMessage: isSessionExpired ? message : "漫画生成の準備に失敗しました",
+      diagnostic: { code: isSessionExpired ? "SESSION_EXPIRED" : "MANGA_PREPARATION_FAILED", detail: message },
       log
     });
     throw error;

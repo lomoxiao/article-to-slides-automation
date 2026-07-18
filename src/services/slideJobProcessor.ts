@@ -157,6 +157,8 @@ export async function processSlideJob(
       /jobs[/\\]processing[/\\]([^/\\]+)[/\\]/g,
       `jobs/failed/${jobId}/`
     );
+    // セッション失効は「失敗」ではなく手動対応(session:capture)待ちとしてviewerに出す
+    const isSessionExpired = error instanceof Error && error.name === "SessionExpiredError";
     const latest = await readSlideJob(jobId);
     const { job: failedJob } = await transitionSlideJob(latest.job, latest.dir, "failed", {
       error: fixedMessage
@@ -167,9 +169,9 @@ export async function processSlideJob(
         originalUrl: getPrimaryJobUrl(failedJob),
         title: failedJob.focus,
         headline: failedJob.focus,
-        slidesStatus: "failed",
+        slidesStatus: isSessionExpired ? "action_required" : "failed",
         stage: "slides_generation",
-        statusMessage: "Google Slidesの生成に失敗しました",
+        statusMessage: isSessionExpired ? message : "Google Slidesの生成に失敗しました",
         slidesUrl: failedJob.deckUrl,
         presentationId: failedJob.presentationId,
         updatedAt: failedJob.updatedAt
@@ -179,9 +181,9 @@ export async function processSlideJob(
         await upsertArtifactDiagnostic({
           articleUrl: failedSourceUrl,
           artifactType: "slides",
-          status: "failed",
+          status: isSessionExpired ? "action_required" : "failed",
           stage: "slides_generation",
-          code: "SLIDES_GENERATION_FAILED",
+          code: isSessionExpired ? "SESSION_EXPIRED" : "SLIDES_GENERATION_FAILED",
           detail: fixedMessage,
           jobId: failedJob.id
         });
@@ -225,6 +227,16 @@ async function prepareSlideDataGeneration(job: SlideJob, processingDir: string, 
 
 async function fetchContentForJob(job: SlideJob): Promise<MergedSourceContent> {
   const urls = job.urls ?? (job.url ? [job.url] : undefined);
+
+  if (job.sourceText) {
+    // URL抽出と同じ60k上限に揃える(codexプロンプトが読むsource.txtの肥大防止)
+    const body = job.sourceText.slice(0, 60_000);
+    const title = job.sourceTitle || job.sourceText.trim().split("\n")[0].slice(0, 80) || "テキスト投入";
+    return {
+      sources: [{ url: getPrimaryJobUrl(job) ?? "text", title, body }],
+      mergedBody: body
+    };
+  }
 
   if (job.researchPrompt) {
     return fetchResearchContent(job.researchPrompt);
