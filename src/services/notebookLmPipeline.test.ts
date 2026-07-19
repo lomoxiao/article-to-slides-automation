@@ -1,11 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 // config は import 時に process.env を parse するため、動的 import の前に設定する。
 process.env.NOTEBOOKLM_NOTEBOOK_ID = "0b7d8a1c-1111-4222-8333-444455556666";
+
+// NotebookLM ロック(jobs/manga/.nblm.lock)は cwd 相対のため、実データの jobs/ に
+// 触れない(実行中ジョブのロックと衝突しない)よう一時ディレクトリへ chdir する。
+// ロックの mkdir は非 recursive なので、親の jobs/manga/ を先に用意する。
+process.chdir(await mkdtemp(path.join(tmpdir(), "nblm-pipeline-test-")));
+await mkdir(path.join("jobs", "manga"), { recursive: true });
 
 const { runNotebookLmSourceSync } = await import("./notebookLmPipeline.js");
 type NotebookLmSession = import("./notebookLmDriver.js").NotebookLmSession;
