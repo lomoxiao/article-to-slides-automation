@@ -193,7 +193,6 @@ export async function terminateProcessTree(child: ChildProcess): Promise<void> {
 
   await new Promise<void>((resolve) => {
     let finished = false;
-    let killTimeout: NodeJS.Timeout;
     const finish = () => {
       if (finished) return;
       finished = true;
@@ -204,7 +203,7 @@ export async function terminateProcessTree(child: ChildProcess): Promise<void> {
       shell: false,
       windowsHide: true
     });
-    killTimeout = setTimeout(() => {
+    const killTimeout = setTimeout(() => {
       killer.kill();
       child.kill();
       finish();

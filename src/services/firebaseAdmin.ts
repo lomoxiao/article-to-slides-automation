@@ -44,7 +44,7 @@ function loadServiceAccount(): any {
     try {
       return JSON.parse(inline);
     } catch (error) {
-      throw new Error(`FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON: ${(error as Error).message}`);
+      throw new Error(`FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON: ${(error as Error).message}`, { cause: error });
     }
   }
 
@@ -58,7 +58,7 @@ function loadServiceAccount(): any {
   try {
     return JSON.parse(readFileSync(keyPath, "utf8"));
   } catch (error) {
-    throw new Error(`Service account file is not valid JSON: ${keyPath} (${(error as Error).message})`);
+    throw new Error(`Service account file is not valid JSON: ${keyPath} (${(error as Error).message})`, { cause: error });
   }
 }
 

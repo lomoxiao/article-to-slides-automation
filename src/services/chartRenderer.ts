@@ -82,12 +82,12 @@ export async function renderChartImagesInSlideData(slideData: unknown[]): Promis
         const slideText = matchingTarget ? `slide ${matchingTarget.slideIndex + 1}` : "unknown slide";
         const chartTypeText = matchingTarget ? `chartType ${matchingTarget.chartType}` : "unknown chartType";
         const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`PNG rendering failed for ${slideText} ${chartTypeText}: ${message}`);
+        throw new Error(`PNG rendering failed for ${slideText} ${chartTypeText}: ${message}`, { cause: error });
       }
     }
   } catch (error) {
     if (isPlaywrightChromiumInstallError(error)) {
-      throw new Error("Playwright Chromium is not installed. Run: npx playwright install chromium");
+      throw new Error("Playwright Chromium is not installed. Run: npx playwright install chromium", { cause: error });
     }
 
     throw error;

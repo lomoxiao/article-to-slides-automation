@@ -20,6 +20,7 @@
     "slides:create": "tsx src/scripts/createSlidesFromOutline.ts",
     "slides:create:gas": "tsx src/scripts/createSlidesViaGas.ts",
     "start": "node dist/index.js",
+    "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "firebase:verify": "node scripts/verify-firebase-admin.mjs"
@@ -37,8 +38,11 @@
     "zod": "^3.25.67"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.15.32",
+    "eslint": "^10.7.0",
     "tsx": "^4.20.3",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.64.0"
   }
 }

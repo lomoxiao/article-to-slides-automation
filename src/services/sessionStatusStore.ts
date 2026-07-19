@@ -24,7 +24,7 @@ function nowJstIso(): string {
 }
 
 function domainKey(domain: string): string {
-  return domain.replace(/[.#$/\[\]]/g, "_");
+  return domain.replace(/[.#$/[\]]/g, "_");
 }
 
 function sessionsDir(): string {

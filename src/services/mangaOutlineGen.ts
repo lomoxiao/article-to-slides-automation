@@ -354,7 +354,7 @@ function prependCharacterSheetTable(step2Text: string, map: CharacterSheetEntry[
   ].join("\n");
 
   // モデルが既に冒頭へ対応表を出している場合は、その重複ブロックを取り除いてから正本を付ける。
-  let body = step2Text.replace(/^﻿/, "").trimStart();
+  let body = step2Text.replace(/^\uFEFF/, "").trimStart();
   if (body.startsWith(CHARACTER_TABLE_HEADER)) {
     const boundary = body.search(/\nSlide\s*\d/);
     if (boundary >= 0) {

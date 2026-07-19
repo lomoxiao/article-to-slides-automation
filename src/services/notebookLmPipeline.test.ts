@@ -8,7 +8,7 @@ import path from "node:path";
 process.env.NOTEBOOKLM_NOTEBOOK_ID = "0b7d8a1c-1111-4222-8333-444455556666";
 
 const { runNotebookLmSourceSync } = await import("./notebookLmPipeline.js");
-const { NotebookLmSession } = await import("./notebookLmDriver.js");
+type NotebookLmSession = import("./notebookLmDriver.js").NotebookLmSession;
 type DriverFailure = import("./notebookLmDriver.js").DriverFailure;
 type MangaJob = import("../types/manga.js").MangaJob;
 
@@ -33,7 +33,7 @@ type FakeSessionPlan = {
   triggerStep3?: () => Promise<{ ok: true; value: undefined } | { ok: false; failure: DriverFailure }>;
 };
 
-function fakeSession(plan: FakeSessionPlan = {}): InstanceType<typeof NotebookLmSession> {
+function fakeSession(plan: FakeSessionPlan = {}): NotebookLmSession {
   const ok = async () => ({ ok: true as const, value: undefined });
   return {
     syncSources: plan.syncSources ?? ok,
@@ -44,7 +44,7 @@ function fakeSession(plan: FakeSessionPlan = {}): InstanceType<typeof NotebookLm
     triggerStep3: plan.triggerStep3 ?? ok,
     reload: ok,
     close: async () => {}
-  } as unknown as InstanceType<typeof NotebookLmSession>;
+  } as unknown as NotebookLmSession;
 }
 
 const failOpen = (kind: DriverFailure["kind"], detail: string) => async () => ({

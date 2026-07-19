@@ -1,0 +1,60 @@
+name: CI
+
+# lint / typecheck / test の安全網(リファクタリング Phase 0)。
+# @local/content-extractor は file:../content-extractor のシンボリックリンク参照のため、
+# GitHub 上の lomoxiao/content-extractor を兄弟ディレクトリへ checkout してビルドし、
+# ローカルと同じレイアウトを再現する。
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # テストはブラウザを起動しないため、Playwright のブラウザDLを省いて高速化する。
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: article-to-slides-automation
+
+      - uses: actions/checkout@v4
+        with:
+          repository: lomoxiao/content-extractor
+          path: content-extractor
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            article-to-slides-automation/package-lock.json
+            content-extractor/package-lock.json
+
+      - name: Build content-extractor (sibling dependency)
+        working-directory: content-extractor
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install
+        working-directory: article-to-slides-automation
+        run: npm ci
+
+      - name: Lint
+        working-directory: article-to-slides-automation
+        run: npm run lint
+
+      - name: Typecheck
+        working-directory: article-to-slides-automation
+        run: npm run typecheck
+
+      - name: Test
+        working-directory: article-to-slides-automation
+        run: npm test
