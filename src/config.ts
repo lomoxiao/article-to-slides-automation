@@ -66,14 +66,12 @@ const envSchema = z.object({
   // 専用 Chrome プロファイル。`npm run notebooklm:login` で1回だけ手動ログインして永続化する。
   // ユーザー既定プロファイルは Chrome の制約で自動操作に使えないため必ず専用ディレクトリにする。
   NOTEBOOKLM_PROFILE_DIR: z.string().default(join(homedir(), ".notebooklm-profile")),
-  // 操作対象ノートブックの UUID(URL の /notebook/<UUID> 部分)。未設定なら Playwright 経路は
-  // 起動せず、従来の claude --chrome 経路(名前 MANGA_NOTEBOOKLM_NAME で探索)のみで動く。
-  NOTEBOOKLM_NOTEBOOK_ID: z.preprocess(
-    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
-    z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, {
-      message: "NOTEBOOKLM_NOTEBOOK_ID must be the notebook UUID (the /notebook/<UUID> part of the URL)"
-    }).optional()
-  ),
+  // 操作対象ノートブックの UUID。未設定/抽出不能なら Playwright 経路は起動せず、従来の
+  // claude --chrome 経路(名前 MANGA_NOTEBOOKLM_NAME で探索)のみで動く。
+  // フルURL(https://notebooklm.google.com/notebook/<UUID>...)でも UUID だけでも受け付け、
+  // 引用符・前後空白・末尾スラッシュを許容して UUID を抽出する(貼り付け方の揺れに強くする)。
+  // UUID を取り出せない不正値でも config 全体を落とさない(下で警告する)。
+  NOTEBOOKLM_NOTEBOOK_ID: z.preprocess((v) => extractNotebookId(v), z.string().optional()),
   // 既定 false(headed)。Google ログイン維持と挙動検証のしやすさを優先する。
   NOTEBOOKLM_HEADLESS: z.coerce.boolean().default(false),
   // デック生成完了のポーリング間隔と総待機上限(Playwright 経路)。
@@ -123,12 +121,37 @@ const envSchema = z.object({
 
 export const config = envSchema.parse(process.env);
 
+if (process.env.NOTEBOOKLM_NOTEBOOK_ID?.trim() && !config.NOTEBOOKLM_NOTEBOOK_ID) {
+  console.warn(
+    "[config] NOTEBOOKLM_NOTEBOOK_ID is set but no notebook UUID could be extracted from it. " +
+      "The Playwright NotebookLM driver is DISABLED (falling back to claude --chrome). " +
+      "Paste the notebook URL (https://notebooklm.google.com/notebook/<UUID>) or just the <UUID>."
+  );
+}
+
 if (config.ANTHROPIC_AUTH_TOKEN) {
   console.warn(
     "[config] ANTHROPIC_AUTH_TOKEN is set. This DISABLES the Claude in Chrome extension: `claude --chrome` " +
     "(NotebookLM sync / deck URL fetch) falls back to Playwright with no logged-in Google session, so it will " +
     "fail with a sign-in redirect. Remove ANTHROPIC_AUTH_TOKEN from .env and use the subscription login (`claude`, then /login)."
   );
+}
+
+/**
+ * NOTEBOOKLM_NOTEBOOK_ID 入力から UUID を取り出す。フルURL・UUID単体のどちらも許容し、
+ * 引用符・前後空白・末尾スラッシュを除去する。UUID を取り出せない/空文字/未設定は
+ * undefined を返す(Playwright 経路を無効化。config 全体は落とさず下で警告する)。
+ */
+function extractNotebookId(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const cleaned = value.trim().replace(/^['"]|['"]$/g, "").trim();
+  if (cleaned === "") {
+    return undefined;
+  }
+  const match = cleaned.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  return match ? match[0] : undefined;
 }
 
 function loadDotEnv() {

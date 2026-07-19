@@ -93,17 +93,25 @@ export class NotebookLmSession {
   ) {}
 
   /**
-   * ソース(step1-output/step2-output)を順にクリックし、「Googleドライブと同期」が出れば実行する。
-   * 同期ボタンが30秒以内に出なければ「更新なし」とみなして先へ進む(現行挙動の踏襲)。
+   * ソース(step1-output/step2-output)を順に開き、「Googleドライブと同期」が出れば実行する。
+   * 同期ボタンが30秒以内に出なければ「更新なし」とみなして先へ進む。
+   *
+   * 各ソースは毎回ノートブックURLへ再ナビゲートした初期状態(一覧が見える)から開く。
+   * ソースを開くとソースガイド(source-viewer)が一覧を覆い、閉じるボタンでは一覧へ確実に
+   * 戻れない(実DOM検証済み)ため、再ナビゲートでリセットするのが最も確実。
    */
   async syncSources(): Promise<DriverResult<void>> {
     for (const name of NBLM_SOURCE_NAMES) {
+      const ready = await this.gotoSourceList();
+      if (!ready.ok) return ready;
+
       const item = this.page.getByText(name, { exact: true }).first();
       try {
         await item.click({ timeout: 20_000 });
       } catch {
         return this.fail("ui_mismatch", `ソース「${name}」が見つかりません`, "sync-sources");
       }
+      // ソースを開くとソースガイド(source-viewer)が開く。同期ボタンはこの中に出る。
       const syncButton = this.page.getByText(NBLM_SELECTORS.driveSyncText).first();
       const appeared = await syncButton.waitFor({ state: "visible", timeout: 30_000 }).then(
         () => true,
@@ -124,6 +132,25 @@ export class NotebookLmSession {
     return { ok: true, value: undefined };
   }
 
+  /** ノートブックURLへ再ナビゲートし、ソース一覧(いずれかのソース名)が見える初期状態に戻す。 */
+  private async gotoSourceList(): Promise<DriverResult<void>> {
+    try {
+      await this.page.goto(notebookUrl(this.notebookId), { waitUntil: "domcontentloaded", timeout: 60_000 });
+    } catch (error) {
+      return this.fail("unreachable", `ノートブックの再読込に失敗: ${describeError(error)}`, "sync-sources");
+    }
+    const listed = await this.page
+      .getByText(NBLM_SOURCE_NAMES[0], { exact: true })
+      .first()
+      .waitFor({ state: "visible", timeout: 20_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!listed) {
+      return this.fail("ui_mismatch", "ソース一覧が表示されません", "sync-sources");
+    }
+    return { ok: true, value: undefined };
+  }
+
   /** Studio の artifact 一覧(UUID+表示テキスト)を取得する。 */
   async snapshotArtifacts(): Promise<DriverResult<ArtifactSnapshot>> {
     let snapshot: ArtifactSnapshot;
@@ -131,6 +158,9 @@ export class NotebookLmSession {
       snapshot = (await this.page.evaluate(ARTIFACT_SNAPSHOT_SCRIPT)) as ArtifactSnapshot;
     } catch (error) {
       return this.fail("ui_mismatch", `Studio スナップショットの取得に失敗: ${describeError(error)}`, "snapshot");
+    }
+    if (!snapshot || !Array.isArray(snapshot.items)) {
+      return this.fail("ui_mismatch", "Studio スナップショットの形式が不正です(スクリプト評価結果が空)", "snapshot");
     }
     if (!snapshot.studioFound && snapshot.items.length === 0) {
       return this.fail("ui_mismatch", "Studio タブも artifact 一覧も見つかりません", "snapshot");
@@ -364,34 +394,31 @@ export async function waitForNotebookState(page: Page): Promise<"signed_in" | "s
 
 // ブラウザ内で実行する Studio スナップショット採取。セレクタ知見は実証済みの
 // MANGA_DECK_DOM_SCRIPT(mangaDeckUrlFetcher.ts)から移植。
-const ARTIFACT_SNAPSHOT_SCRIPT = `async () => {
+// page.evaluate(string) は文字列を「式」として評価するため、関数定義のままだと呼び出されず
+// undefined が返る。必ず IIFE `(async () => {...})()` にして結果(Promise)を返す。
+export const ARTIFACT_SNAPSHOT_SCRIPT = `(async () => {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
-  let studioFound = false;
-  let items = [...document.querySelectorAll("artifact-library-item")];
+  // 現行 NotebookLM の Studio は常時表示の studio-panel(artifact-library)。
+  // タブ切替は無い(role=tab は存在しない)。旧UI互換として「Studio」タブがあれば1度だけ押す。
+  const studioTab = [...document.querySelectorAll('[role="tab"], button')]
+    .find((tab) => tab.textContent?.trim() === "Studio");
+  if (studioTab && studioTab.getAttribute("aria-selected") === "false") {
+    studioTab.click();
+  }
 
-  if (items.length === 0) {
-    let studioTab = null;
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      studioTab = [...document.querySelectorAll('[role="tab"], button')]
-        .find((tab) => tab.textContent?.trim() === "Studio");
-      if (studioTab) break;
-      await sleep(250);
-    }
-    if (studioTab) {
+  // artifact はナビゲーション直後に描画が遅れることがあるため、タブの有無に関係なくポーリングする。
+  let items = [];
+  let studioFound = Boolean(document.querySelector("studio-panel, artifact-library") || studioTab);
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (document.querySelector("studio-panel, artifact-library")) studioFound = true;
+    items = [...document.querySelectorAll("artifact-library-item")];
+    if (items.length > 0) {
       studioFound = true;
-      if (studioTab.getAttribute("aria-selected") !== "true") {
-        studioTab.click();
-      }
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        items = [...document.querySelectorAll("artifact-library-item")];
-        if (items.length > 0) break;
-        await sleep(250);
-      }
+      break;
     }
-  } else {
-    studioFound = true;
+    await sleep(250);
   }
 
   return {
@@ -406,7 +433,7 @@ const ARTIFACT_SNAPSHOT_SCRIPT = `async () => {
       };
     })
   };
-}`;
+})()`;
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

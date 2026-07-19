@@ -65,12 +65,18 @@ for (const [label, candidates] of [
   console.log(`${ok ? "OK" : label === "chatSubmit" ? "WARN(Enter送信で代替)" : "NG"}: ${label} → ${matched.join(", ") || "一致なし"}`);
 }
 
-// ソース行の存在確認(クリックはしない)
+// ソース行の存在確認(クリックはしない)。ソースパネルはチャット欄より遅れて描画されるため、
+// 本番の syncSources(click は自動待機する)と同様に、出現を最大15秒待ってから判定する。
 for (const name of NBLM_SOURCE_NAMES) {
-  const count = await page.getByText(name, { exact: true }).count().catch(() => 0);
-  const ok = count > 0;
-  if (!ok) hasMismatch = true;
-  console.log(`${ok ? "OK" : "NG"}: ソース「${name}」 → ${count} 件`);
+  const appeared = await page
+    .getByText(name, { exact: true })
+    .first()
+    .waitFor({ state: "attached", timeout: 15_000 })
+    .then(() => true)
+    .catch(() => false);
+  const count = appeared ? await page.getByText(name, { exact: true }).count().catch(() => 0) : 0;
+  if (!appeared) hasMismatch = true;
+  console.log(`${appeared ? "OK" : "NG"}: ソース「${name}」 → ${count} 件`);
 }
 
 // Studio artifact 一覧

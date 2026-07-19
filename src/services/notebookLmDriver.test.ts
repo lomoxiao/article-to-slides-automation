@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { artifactUrl, classifyArtifactItem, diffNewArtifacts } from "./notebookLmDriver.js";
+import {
+  ARTIFACT_SNAPSHOT_SCRIPT,
+  artifactUrl,
+  classifyArtifactItem,
+  diffNewArtifacts
+} from "./notebookLmDriver.js";
 
 const NOTEBOOK_ID = "0b7d8a1c-1111-4222-8333-444455556666";
 const ARTIFACT_A = "aaaaaaaa-1111-4222-8333-444455556666";
@@ -45,6 +50,13 @@ test("classifyArtifactItem detects generation failure over generating text", () 
 
 test("classifyArtifactItem treats other text as ready", () => {
   assert.equal(classifyArtifactItem({ id: ARTIFACT_A, text: "漫画デック 12スライド" }), "ready");
+});
+
+test("ARTIFACT_SNAPSHOT_SCRIPT is a callable IIFE expression (not a bare function)", () => {
+  // page.evaluate(string) は式評価なので、関数定義のままだと呼ばれず undefined を返す。
+  // IIFE であること = 式全体が呼び出しで終わることを構文で保証する。
+  assert.doesNotThrow(() => new Function(`return (${ARTIFACT_SNAPSHOT_SCRIPT})`));
+  assert.match(ARTIFACT_SNAPSHOT_SCRIPT.trimEnd(), /\)\(\)$/);
 });
 
 test("artifactUrl builds the shareable base URL", () => {
