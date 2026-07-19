@@ -109,11 +109,19 @@
 
 | Phase | 内容 | 観点 | 前提 |
 |---|---|---|---|
-| 0 | 安全網: lint + CI + 周辺テスト追加 | A-1 | なし |
+| 0 | ✅ 完了 (2026-07-20): lint + CI + 周辺テスト追加 | A-1 | なし |
 | 1 | セキュリティ即効: Slack 入口認証、入力検証、資格情報の外出し | B-1, B-2, B-4 | Phase 0 |
 | 2 | 共通基盤抽出: runner 統合(+injection対策共通化)、ジョブストア下回り、.env ローダー | A-3, B-3 | Phase 0 |
 | 3 | 構造再編: ドメイン分割、大型ファイル分割、config 整理、scripts 統一 | A-2, A-4, A-5, A-6 | Phase 2 |
 | 4 | 衛生・横断: audit CI、Rules レビュー、横断パッケージ化判断 | B-5, B-6, C | Phase 1-3 |
+
+### Phase 0 実施メモ (2026-07-20)
+
+- ESLint 10 + typescript-eslint 8 (flat config)。初回指摘9件は挙動を変えずに修正済み。
+- CI (`.github/workflows/ci.yml`): `file:../content-extractor` は GitHub の
+  lomoxiao/content-extractor を兄弟 checkout + build して再現。CI 緑を確認済み。
+- テスト 74 件 (parseSlideArgs / parseMangaSlackArgs / jobStore の characterization 29件追加)。
+- cwd 相対パス (`jobs/`) に触るテストは一時ディレクトリへ chdir する方式で隔離する。
 
 ## 実行時の原則
 
