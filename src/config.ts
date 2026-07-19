@@ -9,7 +9,6 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   SLACK_APP_TOKEN: z.string().optional(),
   SLACK_BOT_TOKEN: z.string().optional(),
-  SLACK_SIGNING_SECRET: z.string().optional(),
   SLACK_COMPLETION_CHANNEL_ID: z.string().optional(),
   AUTO_RUN_CODEX: z.coerce.boolean().default(true),
   CODEX_CLI_COMMAND: z.string()

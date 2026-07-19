@@ -65,12 +65,11 @@
 
 ## B. セキュリティの観点
 
-### B-1. Slack 入口の認証（最優先）
-- HTTP 経路（`routes/slack.ts`)に署名検証がない。対応は二択:
-  1. Socket Mode を正式な唯一の経路とし、HTTP ルートと `@fastify/formbody` を削除する（現在 `SLACK_APP_TOKEN` 未設定時のフォールバックのみ）
-  2. HTTP 経路を残すなら `SLACK_SIGNING_SECRET` による署名検証（timestamp 検証含む）を必須化
-- どちらにするかは運用実態（HTTP 経路を今も使っているか）の確認が必要 → 決定事項として記録する。
-- 完了条件: 未認証で叩けるジョブ起動エンドポイントが存在しない。
+### B-1. Slack 入口の認証（最優先）✅ 完了 (2026-07-20)
+- ユーザー決定: Socket Mode を唯一の経路とし、未使用の HTTP 経路は削除。
+- 実施: `routes/slack.ts` 削除、`@fastify/formbody` 依存削除、未使用の
+  `SLACK_SIGNING_SECRET` を config から削除、docs/architecture.md を実態に更新。
+- 結果: 未認証で叩けるジョブ起動エンドポイントは存在しない（fastify に残るのは /health のみ）。
 
 ### B-2. 信頼境界での入力検証
 - `job.json` 読み込み（`jobStore.ts:46`、`mangaJobStore.ts:39`）を zod スキーマでパースする。`schemas/` 配下の既存スキーマとの整合も確認。

@@ -2,12 +2,14 @@
 
 ## Inbound
 
-Slack can call the service through either:
+Slack calls the service via Socket Mode only (`src/slack/socketModeClient.ts`, requires `SLACK_APP_TOKEN`):
 
 - Slash command: `/slides https://example.com/article`
 - Event subscription: message posted in a monitored channel
 
-`src/routes/slack.ts` is intentionally thin. It validates the incoming payload, acknowledges Slack quickly, and hands off work to `urlToSlides`.
+Socket Mode connects outbound over WebSocket, so no public HTTP endpoint (and no request
+signature verification) is needed. The legacy unauthenticated HTTP webhook route
+(`src/routes/slack.ts`) was removed in 2026-07; recover it from git history if ever needed.
 
 ## Workflow
 
@@ -31,7 +33,6 @@ This keeps the orchestration code readable and makes it easy to replace individu
 
 ## Production Notes
 
-- Add Slack request signature verification before exposing publicly.
 - Queue long-running jobs with Cloud Tasks, SQS, BullMQ, or similar.
 - Store job state so Slack can show progress and retries are idempotent.
 - Prefer service accounts or workload identity for Google API access.

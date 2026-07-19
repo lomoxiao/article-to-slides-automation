@@ -26,7 +26,6 @@
     "firebase:verify": "node scripts/verify-firebase-admin.mjs"
   },
   "dependencies": {
-    "@fastify/formbody": "^8.0.2",
     "@local/content-extractor": "file:../content-extractor",
     "@slack/socket-mode": "^2.0.6",
     "@slack/web-api": "^7.9.3",
