@@ -39,6 +39,14 @@ export type MangaJob = {
   mangaDeckUrl?: string;
   /** デックURL取得の説明・失敗理由。 */
   mangaDeckDetail?: string;
+  /** NotebookLM パイプラインの進行フェーズ(manga:resume の再開位置判定に使う)。 */
+  nblmPhase?: "sync" | "deck_wait" | "url_registered" | "failed";
+  /** Phase3/4 を実行したエンジン。playwright=決定論ドライバ / claude-chrome=フォールバック。 */
+  nblmEngine?: "playwright" | "claude-chrome";
+  /** Phase3 のドライバ試行回数(累計)。 */
+  nblmAttempts?: number;
+  /** Step3 トリガ前の Studio artifact UUID 一覧(差分検出で新規デックを特定する)。 */
+  nblmArtifactsBefore?: string[];
   error?: string;
 };
 

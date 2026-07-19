@@ -5,7 +5,8 @@ import { fetchSourceContent } from "./sourceAggregator.js";
 import { createMangaJob, updateMangaJob } from "./mangaJobStore.js";
 import { generateMangaOutline, listCharacterSheetImages } from "./mangaOutlineGen.js";
 import { upsertGoogleDoc } from "./driveUploader.js";
-import { syncNotebookLm, type NotebookLmSyncStatus } from "./notebookLmSync.js";
+import { runNotebookLmSourceSync } from "./notebookLmPipeline.js";
+import type { NotebookLmSyncStatus } from "./notebookLmSync.js";
 import {
   clearArtifactDiagnostic,
   upsertArtifactDiagnostic,
@@ -13,6 +14,7 @@ import {
   type ArtifactStage,
   type ViewerArticleStatus
 } from "./firebaseArticleStore.js";
+import { recordSessionExpired } from "./sessionStatusStore.js";
 import type { MangaJob, MangaTreatment } from "../types/manga.js";
 
 const DEFAULT_CHARACTER_SHEETS_DIR = path.join("manga-templates", "character-sheets");
@@ -84,6 +86,10 @@ export async function runArticleToMangaJob(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const isSessionExpired = error instanceof Error && error.name === "SessionExpiredError";
+    if (isSessionExpired) {
+      const domain = (error as { domain?: string }).domain;
+      if (domain) await recordSessionExpired(domain).catch(() => {});
+    }
     await writeMangaViewerState({
       articleUrl: input.url,
       status: isSessionExpired ? "action_required" : "failed",
@@ -233,8 +239,10 @@ export async function runArticleToMangaJob(
         statusMessage: "NotebookLMにソースを登録しています",
         log
       });
-      log(`NotebookLM 同期 + Step3 トリガを実行中 (claude --chrome / ノートブック「${config.MANGA_NOTEBOOKLM_NAME}」) ...`);
-      const sync = await syncNotebookLm({ jobDir: job.jobDir, logger: log });
+      const engine = config.NOTEBOOKLM_NOTEBOOK_ID ? "playwright" : "claude --chrome";
+      log(`NotebookLM 同期 + Step3 トリガを実行中 (${engine} / ノートブック「${config.MANGA_NOTEBOOKLM_NAME}」) ...`);
+      const sync = await runNotebookLmSourceSync({ job: nextJob, logger: log });
+      nextJob = sync.job;
       notebookLmStatus = sync.status;
       notebookLmDetail = sync.detail;
       if (sync.status === "executed") {
@@ -244,6 +252,17 @@ export async function runArticleToMangaJob(
           status: "processing",
           stage: "deck_generation",
           statusMessage: "NotebookLMでスライドデックを生成しています",
+          log
+        });
+      } else if (sync.failureKind === "signed_out") {
+        // ログイン失効は「再ログイン→resume」で確実に回収できる状態として区別する。
+        await writeMangaViewerState({
+          articleUrl: source.url,
+          title: source.title,
+          status: "action_required",
+          stage: "source_registration",
+          statusMessage: "NotebookLMのGoogleログインが失効しています。notebooklm:login 後に再開してください",
+          diagnostic: { code: "NOTEBOOKLM_SESSION_EXPIRED", detail: sync.detail, jobId: job.id },
           log
         });
       } else {

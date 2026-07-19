@@ -4,6 +4,7 @@ import { config } from "./config.js";
 import { registerSlackRoutes } from "./routes/slack.js";
 import { startSlackSocketModeClient } from "./slack/socketModeClient.js";
 import { startGenerationRequestWatcher } from "./services/generationRequestWatcher.js";
+import { reconcileSessionStatuses } from "./services/sessionStatusStore.js";
 
 const app = Fastify({
   logger: true
@@ -31,6 +32,12 @@ try {
     }`
   );
 }
+
+reconcileSessionStatuses().catch((error) => {
+  app.log.warn(
+    `Session status reconcile skipped: ${error instanceof Error ? error.message : String(error)}`
+  );
+});
 
 await app.listen({
   port: config.PORT,

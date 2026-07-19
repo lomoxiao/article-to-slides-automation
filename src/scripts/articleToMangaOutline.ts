@@ -1,6 +1,6 @@
 import { parseMangaArgs } from "../utils/parseMangaArgs.js";
 import { runArticleToMangaJob } from "../services/articleToManga.js";
-import { fetchAndRegisterMangaDeck } from "../services/mangaDeckRetrieval.js";
+import { runNotebookLmDeckRetrieval } from "../services/notebookLmPipeline.js";
 
 const parsed = parseMangaArgs(process.argv.slice(2));
 if (!parsed.ok) {
@@ -57,7 +57,7 @@ try {
 
   // 後続フェーズ: Step3 起動済みなら生成完了を待ってデックURLを取得し Firebase 登録 + Slack 通知。
   // MANGA_DECK_AUTOFETCH 未設定なら内部で即 return する。
-  await fetchAndRegisterMangaDeck({
+  await runNotebookLmDeckRetrieval({
     job: result.job,
     notebookLmStatus: result.notebookLmStatus,
     requestedBy: undefined,

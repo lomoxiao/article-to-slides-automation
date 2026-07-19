@@ -297,6 +297,22 @@ export async function upsertArticleSource(articleUrl: string, markdown: string):
   });
 }
 
+const MAX_TLDR_LENGTH = 1000;
+
+/**
+ * 3行TLDRを記事ノードへ保存する。空値で既存の良値を上書きしない(chooseText)。
+ * 一覧の並び(updatedAt順)を乱さないよう updatedAt には触れない。
+ */
+export async function upsertArticleTldr(articleUrl: string, tldr: string): Promise<void> {
+  const identity = createArticleIdentity(articleUrl);
+  const ref = getDb().ref(`/articles/${identity.articleId}`);
+  const snapshot = await ref.child("tldr").get();
+  const existing = snapshot.exists() ? String(snapshot.val()) : undefined;
+  const value = chooseText(tldr, existing, "");
+  if (!value) return;
+  await ref.update({ tldr: value.slice(0, MAX_TLDR_LENGTH) });
+}
+
 export type ArtifactDiagnosticInput = {
   articleUrl: string;
   artifactType: "slides" | "manga";

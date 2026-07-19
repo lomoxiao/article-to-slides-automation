@@ -40,7 +40,7 @@ const LEGACY_FAIL_MARKER = "NBLM_DECK_FAILED";
  * スライドデックの状態を1回だけ確認する。
  * - 完了済みならノートブックIDと成果物要素のIDからベースURLを構築し fetched。
  * - まだ生成中なら pending。完了デックが無い/未ログイン/想定外は failed。
- * - 待機・リトライは呼び出し側(mangaDeckRetrieval)が制御する。本関数は単発の確認。
+ * - 待機・リトライは呼び出し側(notebookLmPipeline のフォールバック経路)が制御する。本関数は単発の確認。
  * - 例外は投げず、status:"failed" として返す(呼び出し側で隔離・通知する想定)。
  *
  * 前提: ホストで Chrome 起動 + Claude in Chrome 拡張接続 + NotebookLM ログイン維持。

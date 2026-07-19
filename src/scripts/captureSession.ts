@@ -4,6 +4,7 @@ import { createInterface } from "node:readline/promises";
 import { chromium } from "playwright";
 import { normalizeDomain, resolveSessionPath } from "@local/content-extractor";
 import { config } from "../config.js";
+import { recordSessionCaptured } from "../services/sessionStatusStore.js";
 
 // ログイン必須サイトのセッション(storageState)を手動ログインで取得する。
 // Usage: npm run session:capture -- <domain または URL>
@@ -40,6 +41,8 @@ readline.close();
 mkdirSync(dirname(sessionPath), { recursive: true });
 await context.storageState({ path: sessionPath });
 await browser.close();
+
+await recordSessionCaptured(domain).catch(() => {});
 
 console.log(`セッションを保存しました: ${sessionPath}`);
 console.log("失効した場合は同じコマンドで再取得できます。");

@@ -59,10 +59,32 @@ const envSchema = z.object({
   MANGA_NOTEBOOKLM_NAME: z.string().default("漫画Maker"),
   // チャット応答待ちを含むブラウザ操作の上限時間(生成 step1/step2 とは別枠)。
   MANGA_NOTEBOOKLM_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
-  // Phase4: Step3 で生成されたスライドデックの共有URLを claude --chrome で取得し
-  // Firebase の manga.url へ登録する。Step3 が executed の時のみ動く後続フェーズ。
-  // 既定 false(安全側)。前提は AUTOSYNC と同じ(Chrome + 拡張 + NotebookLM ログイン)。
+  // Phase4: Step3 で生成されたスライドデックの共有URLを取得し Firebase の manga.url へ
+  // 登録する。Step3 が executed の時のみ動く後続フェーズ。既定 false(安全側)。
   MANGA_DECK_AUTOFETCH: z.coerce.boolean().default(false),
+  // --- NotebookLM 決定論 Playwright ドライバ(主経路) ---
+  // 専用 Chrome プロファイル。`npm run notebooklm:login` で1回だけ手動ログインして永続化する。
+  // ユーザー既定プロファイルは Chrome の制約で自動操作に使えないため必ず専用ディレクトリにする。
+  NOTEBOOKLM_PROFILE_DIR: z.string().default(join(homedir(), ".notebooklm-profile")),
+  // 操作対象ノートブックの UUID(URL の /notebook/<UUID> 部分)。未設定なら Playwright 経路は
+  // 起動せず、従来の claude --chrome 経路(名前 MANGA_NOTEBOOKLM_NAME で探索)のみで動く。
+  NOTEBOOKLM_NOTEBOOK_ID: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, {
+      message: "NOTEBOOKLM_NOTEBOOK_ID must be the notebook UUID (the /notebook/<UUID> part of the URL)"
+    }).optional()
+  ),
+  // 既定 false(headed)。Google ログイン維持と挙動検証のしやすさを優先する。
+  NOTEBOOKLM_HEADLESS: z.coerce.boolean().default(false),
+  // デック生成完了のポーリング間隔と総待機上限(Playwright 経路)。
+  MANGA_DECK_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  MANGA_DECK_COMPLETE_TIMEOUT_MS: z.coerce.number().int().positive().default(2_400_000),
+  // 「現在、回答できません」検出時の reload+再送 回数(バックオフ 2/4/8分)。
+  MANGA_NBLM_CHAT_RETRIES: z.coerce.number().int().nonnegative().default(3),
+  // セレクタ不一致(ui_mismatch)時に claude --chrome 経路へフォールバックする。
+  // 無効化は空文字を設定する(z.coerce.boolean のため "false" は真になる点に注意)。
+  MANGA_NBLM_FALLBACK_CLAUDE_CHROME: z.coerce.boolean().default(true),
+  // --- 以下3つは claude --chrome フォールバック経路専用(旧 Phase4 の待機モデル) ---
   // Step3 トリガ後、生成完了を見込んで最初に待つ固定時間(約10分)。
   MANGA_DECK_INITIAL_WAIT_MS: z.coerce.number().int().positive().default(600_000),
   // 最初の確認でまだ生成中だった場合の追加待機(1回あたり、約1分)。

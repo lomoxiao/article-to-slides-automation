@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { CreateMangaJobInput, MangaJob } from "../types/manga.js";
 
@@ -30,6 +30,16 @@ export async function createMangaJob(input: CreateMangaJobInput): Promise<MangaJ
   await writeJobFile(job);
 
   return job;
+}
+
+/** 既存ジョブを job.json から読み出す(manga:resume 用)。見つからなければ undefined。 */
+export async function readMangaJob(jobId: string): Promise<MangaJob | undefined> {
+  try {
+    const raw = await readFile(path.join(jobsRoot, jobId, "job.json"), "utf8");
+    return JSON.parse(raw) as MangaJob;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function updateMangaJob(job: MangaJob, patch: Partial<MangaJob>): Promise<MangaJob> {
