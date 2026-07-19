@@ -13,14 +13,15 @@ Google Cloud Console で対象プロジェクトを開き、次の API を有効
 
 Google Cloud Console で service account を作成し、JSON キーを発行します。
 
-発行した JSON ファイルは、このプロジェクト直下に `google-service-account.json` という名前で置く想定です。
+発行した JSON ファイルは、リポジトリの外の `~/.content-extractor/` に
+`google-service-account.json` という名前で置きます（他の Google/Firebase 資格情報と同じ場所）。
 
 ```text
-article-to-slides-automation/
+C:\Users\<you>\.content-extractor\
   google-service-account.json
 ```
 
-このファイルは秘密情報なので Git に含めないでください。`.gitignore` には追加済みです。
+秘密情報はリポジトリ内に置きません（gitignore 済みでも平文秘密をリポジトリ配下に残さない方針）。
 
 ## 3. 保存先 Google Drive フォルダを共有する
 
@@ -45,16 +46,16 @@ https://drive.google.com/drive/folders/XXXXXXXXXXXXXXXXXXXXXXXX
 `.env` を次のように設定します。
 
 ```env
-GOOGLE_APPLICATION_CREDENTIALS=./google-service-account.json
+GOOGLE_APPLICATION_CREDENTIALS=C:\Users\<you>\.content-extractor\google-service-account.json
 GOOGLE_DRIVE_FOLDER_ID=XXXXXXXXXXXXXXXXXXXXXXXX
 SUMMARY_PROVIDER=codex_job
 ```
 
-Slack 通知まで試す場合は、Slack 関連の値も設定します。
+Slack 通知まで試す場合は、Slack 関連の値も設定します（入口は Socket Mode のみ）。
 
 ```env
+SLACK_APP_TOKEN=xapp-...
 SLACK_BOT_TOKEN=xoxb-...
-SLACK_SIGNING_SECRET=...
 SLACK_COMPLETION_CHANNEL_ID=C0123456789
 ```
 

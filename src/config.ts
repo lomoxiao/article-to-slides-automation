@@ -43,8 +43,10 @@ const envSchema = z.object({
   CLAUDE_EXEC_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
   SUMMARY_PROVIDER: z.enum(["codex_job", "manual", "api"]).default("codex_job"),
   GOOGLE_AUTH_MODE: z.enum(["oauth", "service_account"]).default("oauth"),
-  GOOGLE_OAUTH_CREDENTIALS: z.string().default("./google-oauth-credentials.json"),
-  GOOGLE_OAUTH_TOKEN: z.string().default("./google-oauth-token.json"),
+  // 資格情報の正本はリポジトリ外の ~/.content-extractor/(gitignore 頼みで平文秘密を
+  // リポジトリ内に置かない)。移行期のみ、そこに無ければ従来のリポジトリ直下へフォールバック。
+  GOOGLE_OAUTH_CREDENTIALS: z.string().default(resolveCredentialPath("google-oauth-credentials.json")),
+  GOOGLE_OAUTH_TOKEN: z.string().default(resolveCredentialPath("google-oauth-token.json")),
   GOOGLE_DRIVE_FOLDER_ID: z.string().optional(),
   // manga アウトライン(step1/step2)の Drive アップロード先フォルダ。
   // 未設定ならアップロードはスキップ。Google ドキュメントに変換して固定名で upsert する。
@@ -151,6 +153,28 @@ function extractNotebookId(value: unknown): string | undefined {
   }
   const match = cleaned.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
   return match ? match[0] : undefined;
+}
+
+/**
+ * 資格情報ファイルの既定パスを解決する(.env 等で明示設定されていれば zod の
+ * default は使われないため、この関数は「未設定時」のみ効く)。
+ * ~/.content-extractor/<name> を正とし、無ければ従来のリポジトリ直下 ./<name> が
+ * 存在する場合に限りそちらへフォールバックして移行を促す警告を出す。
+ */
+function resolveCredentialPath(name: string): string {
+  const canonical = join(homedir(), ".content-extractor", name);
+  if (existsSync(canonical)) {
+    return canonical;
+  }
+  const legacy = `./${name}`;
+  if (existsSync(legacy)) {
+    console.warn(
+      `[config] ${name} was found in the repository root. Move it to ${canonical} ` +
+        "(credentials should not live inside the repository, even gitignored)."
+    );
+    return legacy;
+  }
+  return canonical;
 }
 
 function loadDotEnv() {

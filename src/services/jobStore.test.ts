@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -36,6 +36,29 @@ test("readSlideJob finds a job by scanning status dirs", async () => {
 
 test("readSlideJob throws for an unknown id", async () => {
   await assert.rejects(readSlideJob("no-such-job"), /Job not found: no-such-job/);
+});
+
+test("readSlideJob rejects path-traversal ids before touching the filesystem", async () => {
+  for (const id of ["../evil", "..", "a/b", "a\\b", "with.dot", ""]) {
+    await assert.rejects(readSlideJob(id), /Invalid job id/);
+  }
+});
+
+test("readSlideJob throws an informative error for corrupt job.json", async () => {
+  const created = await createPendingSlideJob({ url: "https://example.com/corrupt" });
+  await writeFile(path.join(created.pendingDir, "job.json"), "{ not json", "utf8");
+  await assert.rejects(readSlideJob(created.id), /Invalid job\.json at/);
+});
+
+test("readSlideJob preserves unknown extra fields (forward compatibility)", async () => {
+  const created = await createPendingSlideJob({ url: "https://example.com/extra" });
+  const jobPath = path.join(created.pendingDir, "job.json");
+  const raw = JSON.parse(await readFile(jobPath, "utf8"));
+  raw.futureField = "keep-me";
+  await writeFile(jobPath, JSON.stringify(raw), "utf8");
+
+  const { job } = await readSlideJob(created.id);
+  assert.equal((job as Record<string, unknown>).futureField, "keep-me");
 });
 
 test("transitionSlideJob moves the job dir and updates status", async () => {

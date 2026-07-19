@@ -71,21 +71,26 @@
   `SLACK_SIGNING_SECRET` を config から削除、docs/architecture.md を実態に更新。
 - 結果: 未認証で叩けるジョブ起動エンドポイントは存在しない（fastify に残るのは /health のみ）。
 
-### B-2. 信頼境界での入力検証
-- `job.json` 読み込み（`jobStore.ts:46`、`mangaJobStore.ts:39`）を zod スキーマでパースする。`schemas/` 配下の既存スキーマとの整合も確認。
-- スクリプトが argv で受け取る `jobId` は `path.join(jobsRoot, status, jobId)` に直結するため、パストラバーサル対策として ID 形式（タイムスタンプ+UUID8桁）の正規表現検証を挟む。
-- Slack から来る text（URL・プロンプト）が spawn 引数やプロンプトへ流れる経路を洗い出し、URL は `utils/url.ts` での検証を必須通過にする。
-- 完了条件: 外部由来データ（Slack payload / job.json / argv / 記事本文）がスキーマ検証なしで型アサーションされる箇所ゼロ。
+### B-2. 信頼境界での入力検証 ✅ 主要部完了 (2026-07-20)
+- 実施: `job.json` 読み込みを zod スキーマ検証に変更（jobStore / mangaJobStore。未知キーは
+  passthrough で前方互換維持）。実データ全474件で valid を確認済み。
+- 実施: jobId のパストラバーサル対策（`utils/safeJobId.ts`。旧形式の人間命名 ID も通る
+  許可リスト方式 `[A-Za-z0-9_-]{1,128}`)。ストア関数内をチョークポイントに。
+- 残: Slack text → spawn 引数/プロンプト経路の網羅監査（A-3 の runner 共通化と同時に実施予定）。
+- 挙動変更: 壊れた job.json は「黙って未発見扱い」ではなく明示エラーになる。
 
 ### B-3. 子プロセス実行の堅牢化
 - `claudeRunner.ts:142` の `shell: true` は Windows の `.cmd` 解決都合。引数がシェル解釈される経路になるため、`spawn` に配列引数 + `shell: false` で `.cmd` をフルパス指定する方式へ変更できるか検証する（できない場合は引数のサニタイズを共通 runner に集約）。
 - プロンプトへの untrusted テキスト混入対策（codexRunner の Security constraints 文）を共通 runner の必須機能にする（A-3 と同一作業）。
 - 完了条件: spawn 呼び出しが共通 runner 経由のみになり、shell 解釈経路が排除または文書化される。
 
-### B-4. 資格情報の取り扱い
-- リポジトリ直下の `google-oauth-credentials.json` / `google-oauth-token.json` / `google-service-account.json` を `~/.content-extractor/` 等リポジトリ外の既定パスへ移動（config の既定値変更 + 移行手順を docs に記載)。gitignore 済みでも「リポジトリ内に平文秘密がある」状態自体を解消する。
-- Google OAuth スコープと Firebase サービスアカウント権限の最小化レビュー（Slides/Drive の必要スコープのみか）。
-- ログ（Fastify logger・runner の stdout/stderr ログファイル）にトークンや資格情報が出力される経路がないか確認。
+### B-4. 資格情報の取り扱い 🔶 移行中 (2026-07-20)
+- 実施: config の既定パスを `~/.content-extractor/` 優先に変更（明示 env 設定が最優先、
+  リポジトリ直下は移行期フォールバック+警告）。3ファイルを `~/.content-extractor/` へコピー済み。
+  docs (google-oauth-setup / google-slides-setup) を新パスに更新。
+- 残: .env の `GOOGLE_OAUTH_CREDENTIALS` / `GOOGLE_OAUTH_TOKEN` 行の削除（ユーザー作業）→
+  動作確認 → リポジトリ直下の3ファイル削除。
+- 残: OAuth スコープ / サービスアカウント権限の最小化レビュー、ログへの秘匿情報漏れ確認。
 - 完了条件: リポジトリツリー内に秘密ファイルが存在しない。スコープ一覧が docs に明記される。
 
 ### B-5. Firebase ルールと管理系スクリプト
