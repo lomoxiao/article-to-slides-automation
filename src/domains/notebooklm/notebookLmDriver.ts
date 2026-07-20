@@ -36,6 +36,8 @@ export type ArtifactSnapshot = {
 
 const GENERATING_TEXT = /(生成中|作成中|処理中)/;
 const GENERATION_FAILED_TEXT = /(生成に失敗|生成エラー)/;
+/** Step3 トリガ後に新規デックが一度も現れない場合の再確認回数(初回チェック+この回数で打ち切り)。 */
+export const NEW_ARTIFACT_APPEAR_RETRIES = 3;
 const UNAVAILABLE_TEXT = /現在、?回答できません/;
 
 export const NBLM_SOURCE_NAMES = ["step1-output", "step2-output"] as const;
@@ -207,11 +209,15 @@ export class NotebookLmSession {
    * トリガ前スナップショットとの差分で新規デックの完成を待つ。
    * - MANGA_DECK_POLL_INTERVAL_MS ごとに reload + スナップショット
    * - MANGA_DECK_COMPLETE_TIMEOUT_MS 超過で timeout
+   * - 新規デックが一度も現れないまま初回+NEW_ARTIFACT_APPEAR_RETRIES 回の確認を
+   *   使い切ったら generation_failed(Step3 トリガが効いていないのに全体タイムアウト
+   *   まで待ち続けない)。生成中デックが見えている間は全体タイムアウトまで待つ。
    * - beforeIds が空(旧ジョブの resume)は最上位 artifact を対象にする(旧挙動フォールバック)
    */
   async waitForNewArtifact(beforeIds: string[]): Promise<DriverResult<string>> {
     const deadline = Date.now() + config.manga.deckCompleteTimeoutMs;
     const legacyMode = beforeIds.length === 0;
+    let emptyChecks = 0;
 
     for (;;) {
       const snapshotResult = await this.snapshotArtifacts();
@@ -235,6 +241,20 @@ export class NotebookLmSession {
         return this.fail("nblm_unavailable", "NotebookLM が回答不能応答を返しました(現在、回答できません)", "deck-wait");
       }
 
+      if (candidates.length === 0) {
+        emptyChecks += 1;
+        if (emptyChecks > NEW_ARTIFACT_APPEAR_RETRIES) {
+          return this.fail(
+            "generation_failed",
+            `Step3 トリガ後も新規デックが出現しません(${NEW_ARTIFACT_APPEAR_RETRIES}回再確認)`,
+            "deck-wait"
+          );
+        }
+      } else {
+        // 生成中デックが見えたら未出現カウントを戻す(以降は全体タイムアウトが上限)。
+        emptyChecks = 0;
+      }
+
       if (Date.now() >= deadline) {
         return this.fail(
           "timeout",
@@ -246,7 +266,7 @@ export class NotebookLmSession {
       this.log(
         candidates.length > 0
           ? "NotebookLM: デック生成中。待機して再確認します"
-          : "NotebookLM: 新規デック未出現。待機して再確認します"
+          : `NotebookLM: 新規デック未出現。待機して再確認します (${emptyChecks}/${NEW_ARTIFACT_APPEAR_RETRIES})`
       );
       await sleep(config.manga.deckPollIntervalMs);
       const reloaded = await this.reload();
