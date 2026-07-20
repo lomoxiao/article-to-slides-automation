@@ -1,10 +1,10 @@
-import { randomUUID } from "node:crypto";
-import { cp, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import type { CreateSlideJobInput, SlideJob, SlideJobStatus } from "../types/jobs.js";
 import { assertSafeJobId } from "../utils/safeJobId.js";
+import { newJobId, writeJobJson } from "./jobFiles.js";
 
 const jobsRoot = "jobs";
 const statusDirs: SlideJobStatus[] = ["processing", "completed", "failed", "pending"];
@@ -48,7 +48,7 @@ function parseSlideJobFile(raw: string, jobPath: string): SlideJob {
 
 export async function createPendingSlideJob(input: CreateSlideJobInput): Promise<SlideJob> {
   const now = new Date();
-  const id = `${formatJobTimestamp(now)}-${randomUUID().slice(0, 8)}`;
+  const id = newJobId(now);
   const pendingDir = path.join(jobsRoot, "pending", id);
   const completedDir = path.join(jobsRoot, "completed", id);
 
@@ -147,12 +147,7 @@ export function getSlideDataPathForJob(job: SlideJob): string {
 }
 
 async function writeJobFile(job: SlideJob, dir: string) {
-  await mkdir(dir, { recursive: true });
-  await writeFile(path.join(dir, "job.json"), `${JSON.stringify(job, null, 2)}\n`, "utf8");
-}
-
-function formatJobTimestamp(date: Date) {
-  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  await writeJobJson(dir, job);
 }
 
 function isBusyError(error: unknown) {

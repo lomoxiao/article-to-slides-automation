@@ -1,7 +1,9 @@
-import { spawn, type ChildProcess } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
+import { spawnCli } from "./cliProcess.js";
+
+export { terminateProcessTree } from "./cliProcess.js";
 
 export type ClaudeRunResult = {
   result: string;
@@ -132,92 +134,14 @@ export function spawnClaude(
   prompt: string,
   timeoutMs: number
 ): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    let child;
-    try {
-      // Windows では claude は claude.cmd 経由のため shell:true で起動する。
-      // 引数は単純トークン(UUID/モデル名/フラグ)のみ。プロンプトは stdin から渡すので
-      // shell によるクォート崩れの心配はない。
-      child = spawn(config.CLAUDE_CLI_COMMAND, args, {
-        shell: true,
-        env: process.env,
-        windowsHide: true
-      });
-    } catch (error) {
-      reject(error);
-      return;
-    }
-
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-
-    const timeout = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      void terminateProcessTree(child).finally(() => {
-        reject(new ClaudeTimeoutError(timeoutMs, stdout, stderr));
-      });
-    }, timeoutMs);
-
-    child.stdout?.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString("utf8");
-    });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
-    });
-
-    child.on("error", (error) => {
-      if (settled) return;
-      clearTimeout(timeout);
-      settled = true;
-      reject(error);
-    });
-
-    child.on("close", (exitCode) => {
-      if (settled) return;
-      clearTimeout(timeout);
-      settled = true;
-      resolve({ exitCode, stdout, stderr });
-    });
-
-    child.stdin?.end(prompt, "utf8");
-  });
-}
-
-export async function terminateProcessTree(child: ChildProcess): Promise<void> {
-  if (process.platform !== "win32" || child.pid === undefined) {
-    child.kill("SIGKILL");
-    return;
-  }
-
-  await new Promise<void>((resolve) => {
-    let finished = false;
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      clearTimeout(killTimeout);
-      resolve();
-    };
-    const killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
-      shell: false,
-      windowsHide: true
-    });
-    const killTimeout = setTimeout(() => {
-      killer.kill();
-      child.kill();
-      finish();
-    }, 5_000);
-
-    killer.once("error", () => {
-      child.kill();
-      finish();
-    });
-    killer.once("close", (exitCode) => {
-      if (exitCode !== 0) {
-        child.kill();
-      }
-      finish();
-    });
+  // Windows では claude は claude.cmd 経由のため shell:true で起動する。
+  // 引数は単純トークン(UUID/モデル名/フラグ)のみ。プロンプトは stdin から渡すので
+  // shell によるクォート崩れの心配はない。
+  return spawnCli(config.CLAUDE_CLI_COMMAND, args, {
+    stdin: prompt,
+    timeoutMs,
+    shell: true,
+    killTree: true,
+    timeoutError: ({ stdout, stderr }) => new ClaudeTimeoutError(timeoutMs, stdout, stderr)
   });
 }

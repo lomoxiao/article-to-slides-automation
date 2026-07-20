@@ -42,11 +42,16 @@
 - 注意: 移動は import パス変更のみの機械的リファクタとして 1 コミットで行い、ロジック変更を混ぜない。
 - 完了条件: `services/` 直下のファイル数が大幅減、`typecheck`/`test` 緑。
 
-### A-3. 重複実装の統合
-- ジョブストア: ID 生成・タイムスタンプ・job.json 読み書きを共通モジュールへ抽出。ディレクトリ遷移モデル（スライド: pending→processing→completed/failed）と固定フォルダモデル（マンガ）の差分は残してよい — 共通化するのは下回りのみ。
-- CLI runner: `claudeRunner` / `codexRunner` の spawn + timeout + stdout/stderr ログ書き出し + 終了コード判定を共通 `cliRunner` に抽出。プロンプトの injection 対策文（codexRunner 内の Security constraints）も共通テンプレート化して claude 側にも適用。
-- `.env` ローダー: `config.ts` の `loadDotEnv`/`applyEnvFile` を 1 箇所にし、`firebaseAdmin.ts` の重複実装を削除（または `dotenv` パッケージ採用を検討）。
-- 完了条件: 重複ペアごとに共通モジュール 1 つ + 既存テスト緑 + 新規ユニットテスト。
+### A-3. 重複実装の統合 ✅ 完了 (2026-07-20)
+- 実施: ジョブストア下回り(ID 生成・job.json 書き出し)を `services/jobFiles.ts` に抽出。
+  ディレクトリ遷移モデル(スライド)と固定フォルダモデル(マンガ)の差分は各ストアに残置。
+- 実施: spawn + timeout + プロセスツリー kill を `services/cliProcess.ts` に抽出し、
+  claudeRunner / codexRunner の両方を載せ替え(公開 API・挙動は不変)。
+- 実施: injection 対策文を `services/promptGuards.ts` に共通テンプレート化(codex 経路で使用)。
+  claude -p 経路は --disallowedTools で全ツール禁止済みのため未適用
+  (プロンプト変更は生成品質に影響し得るので適用は別途判断 — promptGuards.ts に明記)。
+- 実施: `.env` ローダーを `utils/envFile.ts` に一本化(config.ts / firebaseAdmin.ts の重複解消)。
+- テスト: cliProcess 6件 / envFile 3件を追加(計91件)。
 
 ### A-4. 大型ファイルの分割
 - 優先順: `chartRenderer.ts`(624) → `notebookLmPipeline.ts`(567) → `slideJobProcessor.ts`(467) → `socketModeClient.ts`(437)。
@@ -79,10 +84,12 @@
 - 残: Slack text → spawn 引数/プロンプト経路の網羅監査（A-3 の runner 共通化と同時に実施予定）。
 - 挙動変更: 壊れた job.json は「黙って未発見扱い」ではなく明示エラーになる。
 
-### B-3. 子プロセス実行の堅牢化
-- `claudeRunner.ts:142` の `shell: true` は Windows の `.cmd` 解決都合。引数がシェル解釈される経路になるため、`spawn` に配列引数 + `shell: false` で `.cmd` をフルパス指定する方式へ変更できるか検証する（できない場合は引数のサニタイズを共通 runner に集約）。
-- プロンプトへの untrusted テキスト混入対策（codexRunner の Security constraints 文）を共通 runner の必須機能にする（A-3 と同一作業）。
-- 完了条件: spawn 呼び出しが共通 runner 経由のみになり、shell 解釈経路が排除または文書化される。
+### B-3. 子プロセス実行の堅牢化 ✅ 完了 (2026-07-20)
+- 実施: 全 spawn 呼び出しを `services/cliProcess.ts` の spawnCli / terminateProcessTree に集約。
+- shell:true は claude(.cmd シム)経路のみ残存。Node は .cmd の shell:false 起動を
+  CVE-2024-27980 対策で拒否するため排除不可 — 代わりに「引数は内部生成の単純トークンのみ、
+  外部入力は必ず stdin 経由」という制約を cliProcess.ts に文書化した。
+- injection 対策文の共通化は A-3 で実施済み(promptGuards.ts)。
 
 ### B-4. 資格情報の取り扱い 🔶 移行中 (2026-07-20)
 - 実施: config の既定パスを `~/.content-extractor/` 優先に変更（明示 env 設定が最優先、
@@ -115,7 +122,7 @@
 |---|---|---|---|
 | 0 | ✅ 完了 (2026-07-20): lint + CI + 周辺テスト追加 | A-1 | なし |
 | 1 | セキュリティ即効: Slack 入口認証、入力検証、資格情報の外出し | B-1, B-2, B-4 | Phase 0 |
-| 2 | 共通基盤抽出: runner 統合(+injection対策共通化)、ジョブストア下回り、.env ローダー | A-3, B-3 | Phase 0 |
+| 2 | ✅ 完了 (2026-07-20): runner 統合(+injection対策共通化)、ジョブストア下回り、.env ローダー | A-3, B-3 | Phase 0 |
 | 3 | 構造再編: ドメイン分割、大型ファイル分割、config 整理、scripts 統一 | A-2, A-4, A-5, A-6 | Phase 2 |
 | 4 | 衛生・横断: audit CI、Rules レビュー、横断パッケージ化判断 | B-5, B-6, C | Phase 1-3 |
 

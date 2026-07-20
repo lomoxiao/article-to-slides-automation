@@ -1,12 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getDatabase, type Database } from "firebase-admin/database";
+import { loadDotEnv } from "../utils/envFile.js";
 
-// Load .env exactly like src/config.ts (local first, home fallback, no override)
-// so local runs of the dispatch script pick up FIREBASE_* from .env. In GitHub
-// Actions the variables are injected directly and these files are absent (no-op).
+// Load .env (local first, home fallback, no override) so local runs of the
+// dispatch script pick up FIREBASE_* from .env. In GitHub Actions the variables
+// are injected directly and these files are absent (no-op).
+// Deliberately does NOT import src/config.ts: this module must stay usable from
+// minimal contexts (GitHub Actions) without pulling in the full config surface.
 loadDotEnv();
 
 let cachedDb: Database | undefined;
@@ -70,32 +71,3 @@ function requireEnv(name: string): string {
   return value;
 }
 
-function loadDotEnv() {
-  applyEnvFile(".env");
-  applyEnvFile(join(homedir(), ".content-extractor", ".env"));
-}
-
-function applyEnvFile(envPath: string) {
-  try {
-    if (!existsSync(envPath)) {
-      return;
-    }
-    for (const line of readFileSync(envPath, "utf8").split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) {
-        continue;
-      }
-      const separatorIndex = trimmed.indexOf("=");
-      if (separatorIndex === -1) {
-        continue;
-      }
-      const key = trimmed.slice(0, separatorIndex).trim();
-      const value = trimmed.slice(separatorIndex + 1).trim();
-      if (!(key in process.env)) {
-        process.env[key] = value;
-      }
-    }
-  } catch {
-    // Environment files are optional; deployment platforms inject variables directly.
-  }
-}

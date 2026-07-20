@@ -1,9 +1,9 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import type { CreateMangaJobInput, MangaJob } from "../types/manga.js";
 import { isSafeJobId } from "../utils/safeJobId.js";
+import { newJobId, writeJobJson } from "./jobFiles.js";
 
 const jobsRoot = path.join("jobs", "manga");
 
@@ -39,7 +39,7 @@ function parseMangaJobFile(raw: string, jobPath: string): MangaJob {
  */
 export async function createMangaJob(input: CreateMangaJobInput): Promise<MangaJob> {
   const now = new Date();
-  const id = `${formatJobTimestamp(now)}-${randomUUID().slice(0, 8)}`;
+  const id = newJobId(now);
   const jobDir = path.join(jobsRoot, id);
 
   const job: MangaJob = {
@@ -89,10 +89,5 @@ export async function updateMangaJob(job: MangaJob, patch: Partial<MangaJob>): P
 }
 
 async function writeJobFile(job: MangaJob) {
-  await mkdir(job.jobDir, { recursive: true });
-  await writeFile(path.join(job.jobDir, "job.json"), `${JSON.stringify(job, null, 2)}\n`, "utf8");
-}
-
-function formatJobTimestamp(date: Date) {
-  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  await writeJobJson(job.jobDir, job);
 }
