@@ -58,3 +58,9 @@ jobs:
       - name: Test
         working-directory: article-to-slides-automation
         run: npm test
+
+      # 依存脆弱性の可視化(まだ警告のみ)。fail 化は運用が回ってから判断する。
+      - name: Audit (advisory only)
+        working-directory: article-to-slides-automation
+        continue-on-error: true
+        run: npm audit

@@ -110,19 +110,31 @@
 - 任意の追加課題(未実施): OAuth スコープ / サービスアカウント権限の最小化レビュー、
   ログへの秘匿情報漏れ確認 → Phase 4 の B-5/B-6 と合わせて実施可。
 
-### B-5. Firebase ルールと管理系スクリプト
-- `updateDatabaseRules.ts` は merge+backup 方式で安全側（維持）。ライブ Rules 自体のレビュー（デフォルト deny か、公開パスの範囲）を 1 回実施し、結果を docs に残す。
-- Admin SDK はルールをバイパスするため、書き込みパスをストア層（`firebaseArticleStore` 等）に限定し、任意パス書き込みのユーティリティを作らない方針を明文化。
-- 完了条件: Rules レビュー記録あり。Firebase 書き込みがストア層経由のみ。
+### B-5. Firebase ルールと管理系スクリプト ✅ 完了 (2026-07-20)
+- 実施: ライブ Rules をレビューし docs/firebase-rules-review.md に記録。
+  デフォルト deny 成立・未認証アクセス可能パスなしを確認。改善候補2件は要判断として記載。
+- 実施: Admin 書き込みが「パスごとの専任モジュール経由のみ」であることを確認し、
+  パス↔モジュール対応表を同 docs に明文化。
 
-### B-6. 依存関係の衛生
-- `npm audit` を CI に追加（まず警告表示のみ、運用が回れば fail 化）。
-- `playwright` / `sharp` / `firebase-admin` / `googleapis` のメジャー更新方針を決める（自動 PR は入れず、四半期ごと手動確認でも可）。
-- 完了条件: audit が CI で可視化されている。
+### B-6. 依存関係の衛生 ✅ 主要部完了 (2026-07-20)
+- 実施: `npm audit fix`(非破壊)で high 4件を解消(ws 等)。残り moderate 8 + low 1 は
+  firebase-admin / googleapis の推移的依存でメジャー更新が必要なもの。
+- 実施: CI に audit ステップを追加(continue-on-error の警告表示のみ。fail 化は運用後に判断)。
+- 残(要決定): メジャー更新方針。推奨は「四半期ごとに手動で npm outdated + audit を確認し、
+  必要時のみ更新」(自動 PR は入れない) → /decide での記録待ち。
 
-## C. ワークスペース横断（別枠・任意）
+## C. ワークスペース横断（別枠・任意）🔶 判断待ち (2026-07-20 調査済み)
 
-`firebaseAdmin.ts` 相当が homework-manga（`apps/worker/src/services/firebaseAdmin.ts`）に、Drive クライアントが bookmark-curator（`src/drive/client.ts`）にも重複している。`@local/content-extractor` と同じ file: 参照方式で `@local/google-clients`（firebaseAdmin + driveUploader + googleAuth）を切り出せば 3 パッケージの重複が消える。ただし各パッケージは独立 git リポジトリのため、リリース調整コストと相談。**A/B 完了後に着手判断。**
+`firebaseAdmin.ts` 相当が homework-manga（`apps/worker/src/services/firebaseAdmin.ts` 48行 +
+`googleDrive.ts` 43行）に、Drive クライアントが bookmark-curator（`src/drive/client.ts` 38行)にも
+重複している。`@local/google-clients` として切り出す場合の対象は本リポジトリの
+firebaseAdmin(73) + driveUploader(95) + googleAuth(85) ≒ 250行。
+
+調査結果に基づく推奨: **見送り(現状維持)**。重複は計約130行と小さく安定しており、
+3つの独立 git リポジトリを跨ぐ共有パッケージのリリース調整コスト
+（content-extractor で既に経験している「未 push で CI が壊れる」問題の増殖）が
+削減効果を上回る。重複先で同種のバグ修正が2回以上発生したら再検討する。
+→ 採否は /decide で記録する。
 
 ---
 
@@ -134,7 +146,7 @@
 | 1 | ✅ 完了 (2026-07-20): Slack 入口認証、入力検証、資格情報の外出し | B-1, B-2, B-4 | Phase 0 |
 | 2 | ✅ 完了 (2026-07-20): runner 統合(+injection対策共通化)、ジョブストア下回り、.env ローダー | A-3, B-3 | Phase 0 |
 | 3 | ✅ 完了 (2026-07-20): ドメイン分割、大型ファイル分割、config 整理、scripts 統一 | A-2, A-4, A-5, A-6 | Phase 2 |
-| 4 | 衛生・横断: audit CI、Rules レビュー、横断パッケージ化判断 | B-5, B-6, C | Phase 1-3 |
+| 4 | ✅ 主要部完了 (2026-07-20): audit CI、Rules レビュー完了。残りは2つの決定(依存更新方針・横断化採否)のみ | B-5, B-6, C | Phase 1-3 |
 
 ### Phase 0 実施メモ (2026-07-20)
 
