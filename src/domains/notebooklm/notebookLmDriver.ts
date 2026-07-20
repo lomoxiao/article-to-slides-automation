@@ -1,6 +1,6 @@
 import path from "node:path";
 import { chromium, type BrowserContext, type Locator, type Page } from "playwright";
-import { config } from "../config.js";
+import { config } from "../../config.js";
 
 // NotebookLM を決定論的に操作する Playwright ドライバ(主経路)。
 // LLM は介在しない。専用プロファイル(NOTEBOOKLM_PROFILE_DIR)に手動ログイン済みであることが前提。

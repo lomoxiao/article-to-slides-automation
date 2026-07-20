@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { createGoogleSlidesDeck } from "../services/googleSlides.js";
-import type { SlideOutline } from "../types.js";
+import { createGoogleSlidesDeck } from "../domains/slides/googleSlides.js";
+import type { SlideOutline } from "../types/content.js";
 
 const outlinePath = process.argv[2];
 

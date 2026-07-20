@@ -1,8 +1,8 @@
 import { runArticleToMangaJob } from "./articleToManga.js";
-import { runNotebookLmDeckRetrieval } from "./notebookLmPipeline.js";
-import { notifyMangaCompleted, notifyMangaFailed } from "./slackNotifier.js";
-import { clearArtifactDiagnostic, upsertMangaArtifact } from "./firebaseArticleStore.js";
-import type { MangaTreatment } from "../types/manga.js";
+import { runNotebookLmDeckRetrieval } from "../notebooklm/notebookLmPipeline.js";
+import { notifyMangaCompleted, notifyMangaFailed } from "../../shared/slackNotifier.js";
+import { clearArtifactDiagnostic, upsertMangaArtifact } from "../../shared/firebaseArticleStore.js";
+import type { MangaTreatment } from "../../types/manga.js";
 
 export type EnqueueMangaGenerationInput = {
   url: string;

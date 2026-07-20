@@ -1,3 +1,3 @@
-import { authorizeGoogleOAuth } from "../services/googleAuth.js";
+import { authorizeGoogleOAuth } from "../shared/googleAuth.js";
 
 await authorizeGoogleOAuth();

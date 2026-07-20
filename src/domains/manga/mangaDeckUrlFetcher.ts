@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { config } from "../config.js";
-import { ClaudeTimeoutError, parseClaudeJson, spawnClaude } from "./claudeRunner.js";
+import { config } from "../../config.js";
+import { ClaudeTimeoutError, parseClaudeJson, spawnClaude } from "../../shared/claudeRunner.js";
 
 export type MangaDeckFetchStatus = "fetched" | "pending" | "generation_failed" | "retrieval_failed";
 

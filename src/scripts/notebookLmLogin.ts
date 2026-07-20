@@ -1,9 +1,9 @@
 import { createInterface } from "node:readline/promises";
 import { chromium } from "playwright";
 import { config } from "../config.js";
-import { NBLM_SESSION_DOMAIN } from "../services/notebookLmPipeline.js";
-import { notebookUrl } from "../services/notebookLmDriver.js";
-import { recordSessionCaptured } from "../services/sessionStatusStore.js";
+import { NBLM_SESSION_DOMAIN } from "../domains/notebooklm/notebookLmPipeline.js";
+import { notebookUrl } from "../domains/notebooklm/notebookLmDriver.js";
+import { recordSessionCaptured } from "../shared/sessionStatusStore.js";
 
 // NotebookLM 自動操作用の専用 Chrome プロファイルに手動で Google ログインする。
 // Usage: npm run notebooklm:login

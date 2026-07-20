@@ -5,7 +5,7 @@ import {
   NBLM_SELECTORS,
   NBLM_SOURCE_NAMES,
   openNotebookLmSession
-} from "../services/notebookLmDriver.js";
+} from "../domains/notebooklm/notebookLmDriver.js";
 
 // NotebookLM 決定論ドライバの診断ツール(読み取り専用。同期・チャット送信は行わない)。
 // Usage: npm run notebooklm:probe

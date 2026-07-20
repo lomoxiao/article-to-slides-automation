@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { config } from "../config.js";
-import { parseClaudeJson, spawnClaude } from "./claudeRunner.js";
+import { config } from "../../config.js";
+import { parseClaudeJson, spawnClaude } from "../../shared/claudeRunner.js";
 
 export type NotebookLmSyncStatus = "executed" | "skipped" | "failed";
 

@@ -1,21 +1,21 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { config } from "../config.js";
-import { fetchSourceContent } from "./sourceAggregator.js";
+import { config } from "../../config.js";
+import { fetchSourceContent } from "../../shared/sourceAggregator.js";
 import { createMangaJob, updateMangaJob } from "./mangaJobStore.js";
 import { generateMangaOutline, listCharacterSheetImages } from "./mangaOutlineGen.js";
-import { upsertGoogleDoc } from "./driveUploader.js";
-import { runNotebookLmSourceSync } from "./notebookLmPipeline.js";
-import type { NotebookLmSyncStatus } from "./notebookLmSync.js";
+import { upsertGoogleDoc } from "../../shared/driveUploader.js";
+import { runNotebookLmSourceSync } from "../notebooklm/notebookLmPipeline.js";
+import type { NotebookLmSyncStatus } from "../notebooklm/notebookLmSync.js";
 import {
   clearArtifactDiagnostic,
   upsertArtifactDiagnostic,
   upsertMangaArtifact,
   type ArtifactStage,
   type ViewerArticleStatus
-} from "./firebaseArticleStore.js";
-import { recordSessionExpired } from "./sessionStatusStore.js";
-import type { MangaJob, MangaTreatment } from "../types/manga.js";
+} from "../../shared/firebaseArticleStore.js";
+import { recordSessionExpired } from "../../shared/sessionStatusStore.js";
+import type { MangaJob, MangaTreatment } from "../../types/manga.js";
 
 const DEFAULT_CHARACTER_SHEETS_DIR = path.join("manga-templates", "character-sheets");
 

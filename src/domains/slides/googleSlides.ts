@@ -1,8 +1,8 @@
 import { google } from "googleapis";
 import type { slides_v1 } from "googleapis";
-import { config } from "../config.js";
-import { getGoogleAuthClient } from "./googleAuth.js";
-import type { GeneratedDeck, SlideOutline } from "../types.js";
+import { config } from "../../config.js";
+import { getGoogleAuthClient } from "../../shared/googleAuth.js";
+import type { GeneratedDeck, SlideOutline } from "../../types/content.js";
 
 export async function createGoogleSlidesDeck(outline: SlideOutline): Promise<GeneratedDeck> {
   const auth = await getGoogleAuthClient();

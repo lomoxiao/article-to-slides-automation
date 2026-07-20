@@ -1,4 +1,4 @@
-import { registerArticle } from "../services/firebaseArticleStore.js";
+import { registerArticle } from "../shared/firebaseArticleStore.js";
 
 // Entry point for the GitHub Actions `repository_dispatch` workflow.
 // The workflow maps client_payload.{url,title,headline} to these env vars.

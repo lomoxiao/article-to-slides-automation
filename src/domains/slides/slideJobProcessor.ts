@@ -1,15 +1,15 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { config } from "../config.js";
-import type { SlideJob } from "../types/jobs.js";
+import { config } from "../../config.js";
+import type { SlideJob } from "../../types/jobs.js";
 import {
   fetchMultipleSourceContent,
   fetchResearchContent,
   fetchSourceContent,
   type MergedSourceContent
-} from "./sourceAggregator.js";
-import { runCodexForSlideJob, runCodexPrompt } from "./codexRunner.js";
+} from "../../shared/sourceAggregator.js";
+import { runCodexForSlideJob, runCodexPrompt } from "../../shared/codexRunner.js";
 import { renderChartImagesInSlideData } from "./chartRenderer.js";
 import { createSlidesViaGas } from "./gasSlides.js";
 import {
@@ -24,12 +24,12 @@ import {
   upsertArticleTldr,
   upsertArtifactDiagnostic,
   upsertSlideArtifact
-} from "./firebaseArticleStore.js";
-import { recordSessionExpired } from "./sessionStatusStore.js";
+} from "../../shared/firebaseArticleStore.js";
+import { recordSessionExpired } from "../../shared/sessionStatusStore.js";
 import {
   notifySlackGasSlidesCompleted,
   notifySlackJobFailed
-} from "./slackNotifier.js";
+} from "../../shared/slackNotifier.js";
 
 type ProcessSlideJobOptions = {
   slideDataPath?: string;

@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { getDb } from "./firebaseAdmin.js";
-import { createTextArticleIdentity } from "./identity.js";
-import { registerArticle, upsertArticleSource } from "./firebaseArticleStore.js";
-import { runUrlToGasSlidesWorkflow } from "../workflows/urlToGasSlides.js";
+import { getDb } from "../../shared/firebaseAdmin.js";
+import { createTextArticleIdentity } from "../../shared/identity.js";
+import { registerArticle, upsertArticleSource } from "../../shared/firebaseArticleStore.js";
+import { runUrlToGasSlidesWorkflow } from "../../workflows/urlToGasSlides.js";
 import { processSlideJob } from "./slideJobProcessor.js";
-import { enqueueMangaGeneration } from "./mangaGenerationQueue.js";
-import { DEFAULT_MANGA_PAGES } from "../utils/parseMangaSlackArgs.js";
-import type { MangaTreatment } from "../types/manga.js";
+import { enqueueMangaGeneration } from "../manga/mangaGenerationQueue.js";
+import { DEFAULT_MANGA_PAGES } from "../../utils/parseMangaSlackArgs.js";
+import type { MangaTreatment } from "../../types/manga.js";
 
 const REQUESTS_PATH = "/generationRequests";
 const MAX_PROCESSED_IDS = 500;

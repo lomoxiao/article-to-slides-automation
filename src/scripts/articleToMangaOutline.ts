@@ -1,6 +1,6 @@
 import { parseMangaArgs } from "../utils/parseMangaArgs.js";
-import { runArticleToMangaJob } from "../services/articleToManga.js";
-import { runNotebookLmDeckRetrieval } from "../services/notebookLmPipeline.js";
+import { runArticleToMangaJob } from "../domains/manga/articleToManga.js";
+import { runNotebookLmDeckRetrieval } from "../domains/notebooklm/notebookLmPipeline.js";
 
 const parsed = parseMangaArgs(process.argv.slice(2));
 if (!parsed.ok) {

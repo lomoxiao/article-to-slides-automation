@@ -16,7 +16,7 @@ await mkdir(path.join("jobs", "manga"), { recursive: true });
 const { runNotebookLmSourceSync } = await import("./notebookLmPipeline.js");
 type NotebookLmSession = import("./notebookLmDriver.js").NotebookLmSession;
 type DriverFailure = import("./notebookLmDriver.js").DriverFailure;
-type MangaJob = import("../types/manga.js").MangaJob;
+type MangaJob = import("../../types/manga.js").MangaJob;
 
 const ARTIFACT_A = "aaaaaaaa-1111-4222-8333-444455556666";
 

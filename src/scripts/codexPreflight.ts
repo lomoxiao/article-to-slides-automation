@@ -4,7 +4,7 @@ import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import { copySanitizedCodexConfig } from "../services/codexConfig.js";
+import { copySanitizedCodexConfig } from "../shared/codexConfig.js";
 
 type VersionCheck = {
   ok: boolean;

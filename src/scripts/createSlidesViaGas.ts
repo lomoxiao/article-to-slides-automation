@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createSlidesViaGas } from "../services/gasSlides.js";
-import { renderChartImagesInSlideData } from "../services/chartRenderer.js";
+import { createSlidesViaGas } from "../domains/slides/gasSlides.js";
+import { renderChartImagesInSlideData } from "../domains/slides/chartRenderer.js";
 
 const slideDataPath = process.argv[2];
 

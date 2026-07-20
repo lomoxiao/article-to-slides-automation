@@ -1,4 +1,4 @@
-import { processSlideJob } from "../services/slideJobProcessor.js";
+import { processSlideJob } from "../domains/slides/slideJobProcessor.js";
 
 const jobId = process.argv[2];
 const explicitSlideDataPath = process.argv[3];

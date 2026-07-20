@@ -3,10 +3,10 @@ import {
   fetchResearchContent,
   fetchSourceContent,
   type MergedSourceContent
-} from "../services/sourceAggregator.js";
-import { createGoogleSlidesDeck } from "../services/googleSlides.js";
-import { notifySlack } from "../services/slackNotifier.js";
-import { summarizeForSlides } from "../services/summarizer.js";
+} from "../shared/sourceAggregator.js";
+import { createGoogleSlidesDeck } from "../domains/slides/googleSlides.js";
+import { notifySlack } from "../shared/slackNotifier.js";
+import { summarizeForSlides } from "../shared/summarizer.js";
 
 type UrlToSlidesInput = {
   url?: string;

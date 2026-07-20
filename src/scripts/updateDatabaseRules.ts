@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { getDb } from "../services/firebaseAdmin.js";
+import { getDb } from "../shared/firebaseAdmin.js";
 
 // ライブRulesにはリポジトリ外のキー(homeworkJobsV3等)があるため、
 // テンプレートの丸ごとPUTは禁止。必ず「ライブ取得→パッチをマージ→PUT」で更新する。

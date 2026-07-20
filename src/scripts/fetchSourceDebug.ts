@@ -1,5 +1,5 @@
 import { extractContent } from "@local/content-extractor";
-import { buildDebugExtractorOptions } from "../services/sourceAggregator.js";
+import { buildDebugExtractorOptions } from "../shared/sourceAggregator.js";
 
 // 抽出パイプラインの手動確認用: 複数ページ巡回やセッション設定の動作を単体で試す。
 // Usage: npx tsx src/scripts/fetchSourceDebug.ts <url>

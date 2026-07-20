@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "../config.js";
 import type { MergedSourceContent } from "./sourceAggregator.js";
-import type { SlideOutline, SourceContent } from "../types.js";
+import type { SlideOutline, SourceContent } from "../types/content.js";
 
 type SummarizeInput = {
   content: MergedSourceContent | SourceContent;

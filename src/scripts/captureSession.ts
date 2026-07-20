@@ -4,7 +4,7 @@ import { createInterface } from "node:readline/promises";
 import { chromium } from "playwright";
 import { normalizeDomain, resolveSessionPath } from "@local/content-extractor";
 import { config } from "../config.js";
-import { recordSessionCaptured } from "../services/sessionStatusStore.js";
+import { recordSessionCaptured } from "../shared/sessionStatusStore.js";
 
 // ログイン必須サイトのセッション(storageState)を手動ログインで取得する。
 // Usage: npm run session:capture -- <domain または URL>

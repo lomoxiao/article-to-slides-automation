@@ -1,5 +1,5 @@
-import { readMangaJob, updateMangaJob } from "../services/mangaJobStore.js";
-import { runNotebookLmDeckRetrieval, runNotebookLmSourceSync } from "../services/notebookLmPipeline.js";
+import { readMangaJob, updateMangaJob } from "../domains/manga/mangaJobStore.js";
+import { runNotebookLmDeckRetrieval, runNotebookLmSourceSync } from "../domains/notebooklm/notebookLmPipeline.js";
 
 // 失敗した漫画ジョブの NotebookLM フェーズ(Phase3/4)だけを再実行する。
 // Usage: npm run manga:resume -- <jobId>

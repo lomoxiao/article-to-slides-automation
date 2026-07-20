@@ -2,9 +2,9 @@ import { cp, mkdir, readFile, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import type { CreateSlideJobInput, SlideJob, SlideJobStatus } from "../types/jobs.js";
-import { assertSafeJobId } from "../utils/safeJobId.js";
-import { newJobId, writeJobJson } from "./jobFiles.js";
+import type { CreateSlideJobInput, SlideJob, SlideJobStatus } from "../../types/jobs.js";
+import { assertSafeJobId } from "../../utils/safeJobId.js";
+import { newJobId, writeJobJson } from "../../shared/jobFiles.js";
 
 const jobsRoot = "jobs";
 const statusDirs: SlideJobStatus[] = ["processing", "completed", "failed", "pending"];

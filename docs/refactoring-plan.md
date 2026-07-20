@@ -32,15 +32,19 @@
 - リファクタ対象に触る前に、その周辺の characterization test を足す（特に `jobStore`、`workflows/`、`parseSlideArgs` / `parseMangaSlackArgs`）。
 - 完了条件: `npm run lint` が存在し、CI が main への push / PR で緑になる。
 
-### A-2. ドメイン別のディレクトリ再編
-- `services/` フラット構造を機能ドメインで分割する案:
-  - `src/domains/slides/`（slideJobProcessor, gasSlides, googleSlides, chartRenderer, jobStore）
-  - `src/domains/manga/`（articleToManga, mangaOutlineGen, mangaJobStore, mangaGenerationQueue, mangaDeckUrlFetcher）
-  - `src/domains/notebooklm/`（notebookLmDriver, notebookLmPipeline, notebookLmSync）
-  - `src/shared/`（runner 基盤, firebaseAdmin, googleAuth, driveUploader, slackNotifier, summarizer, textUtils）
-- `types.ts` と `types/` の併存を解消し、型は各ドメイン配下または `shared/types` に一元化。
-- 注意: 移動は import パス変更のみの機械的リファクタとして 1 コミットで行い、ロジック変更を混ぜない。
-- 完了条件: `services/` 直下のファイル数が大幅減、`typecheck`/`test` 緑。
+### A-2. ドメイン別のディレクトリ再編 ✅ 完了 (2026-07-20)
+- 実施: `services/`(45ファイル)を機能ドメインへ機械的に移動(import パス書き換えのみ、
+  ロジック変更なし、git は全件リネーム検出):
+  - `src/domains/slides/`: slideJobProcessor, gasSlides, googleSlides, chartRenderer,
+    jobStore, generationRequestWatcher
+  - `src/domains/manga/`: articleToManga, mangaOutlineGen, mangaJobStore,
+    mangaGenerationQueue, mangaDeckUrlFetcher
+  - `src/domains/notebooklm/`: notebookLmDriver, notebookLmPipeline, notebookLmSync
+  - `src/shared/`: runner 基盤(cliProcess/claudeRunner/codexRunner/codexConfig/promptGuards),
+    firebaseAdmin, firebaseArticleStore, googleAuth, driveUploader, slackNotifier,
+    summarizer, sourceAggregator, textUtils, identity, jobFiles,
+    paginationDomainStore, sessionStatusStore
+- 実施: `types.ts` を `types/content.ts` に統合(types/ へ一元化)。`services/` は消滅。
 
 ### A-3. 重複実装の統合 ✅ 完了 (2026-07-20)
 - 実施: ジョブストア下回り(ID 生成・job.json 書き出し)を `services/jobFiles.ts` に抽出。

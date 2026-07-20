@@ -1,6 +1,6 @@
 import { extractContent, type ExtractorOptions } from "@local/content-extractor";
 import { config } from "../config.js";
-import type { SourceContent } from "../types.js";
+import type { SourceContent } from "../types/content.js";
 import { loadPaginationDomainRules, recordPaginationSuccess } from "./paginationDomainStore.js";
 
 export type MergedSourceContent = {

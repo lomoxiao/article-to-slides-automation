@@ -1,8 +1,8 @@
 import Fastify from "fastify";
 import { config } from "./config.js";
 import { startSlackSocketModeClient } from "./slack/socketModeClient.js";
-import { startGenerationRequestWatcher } from "./services/generationRequestWatcher.js";
-import { reconcileSessionStatuses } from "./services/sessionStatusStore.js";
+import { startGenerationRequestWatcher } from "./domains/slides/generationRequestWatcher.js";
+import { reconcileSessionStatuses } from "./shared/sessionStatusStore.js";
 
 const app = Fastify({
   logger: true

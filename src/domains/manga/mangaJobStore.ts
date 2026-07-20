@@ -1,9 +1,9 @@
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import type { CreateMangaJobInput, MangaJob } from "../types/manga.js";
-import { isSafeJobId } from "../utils/safeJobId.js";
-import { newJobId, writeJobJson } from "./jobFiles.js";
+import type { CreateMangaJobInput, MangaJob } from "../../types/manga.js";
+import { isSafeJobId } from "../../utils/safeJobId.js";
+import { newJobId, writeJobJson } from "../../shared/jobFiles.js";
 
 const jobsRoot = path.join("jobs", "manga");
 

@@ -1,5 +1,5 @@
-import { createPendingSlideJob } from "../services/jobStore.js";
-import { clearArtifactDiagnostic, upsertSlideArtifact } from "../services/firebaseArticleStore.js";
+import { createPendingSlideJob } from "../domains/slides/jobStore.js";
+import { clearArtifactDiagnostic, upsertSlideArtifact } from "../shared/firebaseArticleStore.js";
 import type { SlideJob } from "../types/jobs.js";
 
 type UrlToGasSlidesInput = {

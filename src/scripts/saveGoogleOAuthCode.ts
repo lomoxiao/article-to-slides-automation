@@ -1,4 +1,4 @@
-import { saveGoogleOAuthCode } from "../services/googleAuth.js";
+import { saveGoogleOAuthCode } from "../shared/googleAuth.js";
 
 const code = process.argv[2];
 

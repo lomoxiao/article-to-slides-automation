@@ -1,23 +1,23 @@
 import { mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
-import { config } from "../config.js";
-import { updateMangaJob } from "./mangaJobStore.js";
+import { config } from "../../config.js";
+import { updateMangaJob } from "../manga/mangaJobStore.js";
 import { openNotebookLmSession, type DriverFailure, type NotebookLmFailureKind, type NotebookLmSession } from "./notebookLmDriver.js";
 import { syncNotebookLm, type NotebookLmSyncStatus } from "./notebookLmSync.js";
 import {
   fetchMangaDeckUrl,
   shouldRetryMangaDeckFetch,
   type MangaDeckFetchResult
-} from "./mangaDeckUrlFetcher.js";
+} from "../manga/mangaDeckUrlFetcher.js";
 import {
   clearArtifactDiagnostic,
   upsertArtifactDiagnostic,
   upsertMangaArtifact,
   type ArtifactStage
-} from "./firebaseArticleStore.js";
-import { recordSessionExpired } from "./sessionStatusStore.js";
-import { notifyMangaDeckReady, notifyMangaDeckFailed, postSlackText } from "./slackNotifier.js";
-import type { MangaJob } from "../types/manga.js";
+} from "../../shared/firebaseArticleStore.js";
+import { recordSessionExpired } from "../../shared/sessionStatusStore.js";
+import { notifyMangaDeckReady, notifyMangaDeckFailed, postSlackText } from "../../shared/slackNotifier.js";
+import type { MangaJob } from "../../types/manga.js";
 
 // Phase3(ソース同期+Step3トリガ)と Phase4(デックURL取得)の統合パイプライン。
 // 主経路は notebookLmDriver(決定論 Playwright)。NOTEBOOKLM_NOTEBOOK_ID 未設定、または

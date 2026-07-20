@@ -1,7 +1,7 @@
 import { copyFile, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { runCodexPrompt } from "./codexRunner.js";
-import type { MangaJob, MangaTreatment } from "../types/manga.js";
+import { runCodexPrompt } from "../../shared/codexRunner.js";
+import type { MangaJob, MangaTreatment } from "../../types/manga.js";
 
 const mangaTemplatesDir = path.resolve("manga-templates");
 const promptsDir = path.join(mangaTemplatesDir, "prompts");

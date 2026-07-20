@@ -1,11 +1,11 @@
 import { SocketModeClient } from "@slack/socket-mode";
 import { config } from "../config.js";
-import { notifySlackJobFailed, postSlackText } from "../services/slackNotifier.js";
-import { processSlideJob } from "../services/slideJobProcessor.js";
+import { notifySlackJobFailed, postSlackText } from "../shared/slackNotifier.js";
+import { processSlideJob } from "../domains/slides/slideJobProcessor.js";
 import { runUrlToGasSlidesWorkflow } from "../workflows/urlToGasSlides.js";
 import { parseSlideArgs } from "../utils/parseSlideArgs.js";
 import { parseMangaSlackArgs } from "../utils/parseMangaSlackArgs.js";
-import { enqueueMangaGeneration } from "../services/mangaGenerationQueue.js";
+import { enqueueMangaGeneration } from "../domains/manga/mangaGenerationQueue.js";
 
 const SLIDE_GENERATE_PREFIX = "[slide-generate]";
 const MANGA_GENERATE_PREFIX = "[manga-generate]";
