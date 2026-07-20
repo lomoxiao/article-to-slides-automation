@@ -2,11 +2,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createSlidesViaGas } from "../domains/slides/gasSlides.js";
 import { renderChartImagesInSlideData } from "../domains/slides/chartRenderer.js";
+import { usage } from "./lib/cli.js";
 
 const slideDataPath = process.argv[2];
 
 if (!slideDataPath) {
-  throw new Error("Usage: npm run slides:create:gas -- <path-to-slideData.json>");
+  usage("Usage: npm run slides:create:gas -- <path-to-slideData.json>");
 }
 
 const raw = await readFile(slideDataPath, "utf8");

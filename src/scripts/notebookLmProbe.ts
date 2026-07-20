@@ -6,6 +6,7 @@ import {
   NBLM_SOURCE_NAMES,
   openNotebookLmSession
 } from "../domains/notebooklm/notebookLmDriver.js";
+import { fail } from "./lib/cli.js";
 
 // NotebookLM 決定論ドライバの診断ツール(読み取り専用。同期・チャット送信は行わない)。
 // Usage: npm run notebooklm:probe
@@ -14,10 +15,9 @@ import {
 // - Studio artifact 一覧の取得確認
 
 if (!config.notebookLm.notebookId) {
-  console.error(
+  fail(
     "NOTEBOOKLM_NOTEBOOK_ID が未設定です。.env にノートブック URL の /notebook/<UUID> 部分を設定してください。"
   );
-  process.exit(1);
 }
 
 const probeDir = path.join("jobs", "manga", ".probe");

@@ -1,14 +1,14 @@
 import { parseMangaArgs } from "../utils/parseMangaArgs.js";
 import { runArticleToMangaJob } from "../domains/manga/articleToManga.js";
 import { runNotebookLmDeckRetrieval } from "../domains/notebooklm/notebookLmPipeline.js";
+import { fail, usage } from "./lib/cli.js";
 
 const parsed = parseMangaArgs(process.argv.slice(2));
 if (!parsed.ok) {
-  console.error(`引数エラー: ${parsed.errorMessage}`);
-  console.error(
-    'Usage: npm run manga:outline -- --url "https://..." --pages 8 [--genre 教育・解説] [--art-style A] [--treatment B]'
+  usage(
+    `引数エラー: ${parsed.errorMessage}\n` +
+      'Usage: npm run manga:outline -- --url "https://..." --pages 8 [--genre 教育・解説] [--art-style A] [--treatment B]'
   );
-  process.exit(1);
 }
 
 try {
@@ -65,6 +65,5 @@ try {
   });
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
-  console.error(`生成に失敗しました: ${message}`);
-  process.exit(1);
+  fail(`生成に失敗しました: ${message}`);
 }

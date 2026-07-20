@@ -1,11 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { createGoogleSlidesDeck } from "../domains/slides/googleSlides.js";
 import type { SlideOutline } from "../types/content.js";
+import { usage } from "./lib/cli.js";
 
 const outlinePath = process.argv[2];
 
 if (!outlinePath) {
-  throw new Error("Usage: npm run slides:create -- <path-to-outline.json>");
+  usage("Usage: npm run slides:create -- <path-to-outline.json>");
 }
 
 const raw = await readFile(outlinePath, "utf8");

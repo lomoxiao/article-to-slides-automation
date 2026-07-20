@@ -2,16 +2,17 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getDb } from "../shared/firebaseAdmin.js";
+import { usage } from "./lib/cli.js";
 
 // ライブRulesにはリポジトリ外のキー(homeworkJobsV3等)があるため、
 // テンプレートの丸ごとPUTは禁止。必ず「ライブ取得→パッチをマージ→PUT」で更新する。
-const usage = "Usage: npx tsx src/scripts/updateDatabaseRules.ts <patch.json> [--apply]";
+const usageText = "Usage: npx tsx src/scripts/updateDatabaseRules.ts <patch.json> [--apply]";
 
 const patchPath = process.argv[2];
 const apply = process.argv.includes("--apply");
 
 if (!patchPath || !existsSync(patchPath)) {
-  throw new Error(usage);
+  usage(usageText);
 }
 
 const patch = JSON.parse(readFileSync(patchPath, "utf8"));

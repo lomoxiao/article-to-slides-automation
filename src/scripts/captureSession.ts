@@ -5,18 +5,19 @@ import { chromium } from "playwright";
 import { normalizeDomain, resolveSessionPath } from "@local/content-extractor";
 import { config } from "../config.js";
 import { recordSessionCaptured } from "../shared/sessionStatusStore.js";
+import { fail, usage } from "./lib/cli.js";
 
 // ログイン必須サイトのセッション(storageState)を手動ログインで取得する。
 // Usage: npm run session:capture -- <domain または URL>
 // 注意: 保存されるJSONはCookie実体を含む。リポジトリへコミットしないこと。
 const arg = process.argv[2];
 if (!arg) {
-  throw new Error("Usage: npm run session:capture -- <domain>  (例: npm run session:capture -- nikkei.com)");
+  usage("Usage: npm run session:capture -- <domain>  (例: npm run session:capture -- nikkei.com)");
 }
 
 const domain = normalizeDomain(arg.includes("://") ? arg : `https://${arg}`);
 if (!domain) {
-  throw new Error(`ドメインを解釈できません: ${arg}`);
+  fail(`ドメインを解釈できません: ${arg}`);
 }
 
 const sessionPath = resolveSessionPath(domain, {

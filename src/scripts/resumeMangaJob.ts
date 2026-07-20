@@ -1,5 +1,6 @@
 import { readMangaJob, updateMangaJob } from "../domains/manga/mangaJobStore.js";
 import { runNotebookLmDeckRetrieval, runNotebookLmSourceSync } from "../domains/notebooklm/notebookLmPipeline.js";
+import { fail, usage } from "./lib/cli.js";
 
 // 失敗した漫画ジョブの NotebookLM フェーズ(Phase3/4)だけを再実行する。
 // Usage: npm run manga:resume -- <jobId>
@@ -9,14 +10,12 @@ import { runNotebookLmDeckRetrieval, runNotebookLmSourceSync } from "../domains/
 
 const jobId = process.argv[2];
 if (!jobId) {
-  console.error("Usage: npm run manga:resume -- <jobId>  (例: npm run manga:resume -- 20260719T095240Z-da39781f)");
-  process.exit(1);
+  usage("Usage: npm run manga:resume -- <jobId>  (例: npm run manga:resume -- 20260719T095240Z-da39781f)");
 }
 
 let job = await readMangaJob(jobId);
 if (!job) {
-  console.error(`ジョブが見つかりません: jobs/manga/${jobId}/job.json`);
-  process.exit(1);
+  fail(`ジョブが見つかりません: jobs/manga/${jobId}/job.json`);
 }
 
 if (job.mangaDeckStatus === "fetched" && job.mangaDeckUrl) {
@@ -25,11 +24,10 @@ if (job.mangaDeckStatus === "fetched" && job.mangaDeckUrl) {
 }
 
 if (!job.driveStep1Url || !job.driveStep2Url) {
-  console.error(
+  fail(
     "Drive アップロードが完了していないため再開できません(step1/step2 の driveUrl がありません)。" +
       "最初から生成し直してください: npm run manga:outline"
   );
-  process.exit(1);
 }
 
 const log = (message: string) => console.log(`[manga-resume] ${message}`);
@@ -42,11 +40,12 @@ if (skipSync) {
   const sync = await runNotebookLmSourceSync({ job, logger: log });
   job = await updateMangaJob(sync.job, { notebookLmStatus: sync.status, notebookLmDetail: sync.detail });
   if (sync.status !== "executed") {
-    console.error(`Phase3 に失敗しました: ${sync.detail}`);
-    if (sync.failureKind === "signed_out") {
-      console.error("→ npm run notebooklm:login でログインし直してから再度実行してください");
-    }
-    process.exit(1);
+    fail(
+      `Phase3 に失敗しました: ${sync.detail}` +
+        (sync.failureKind === "signed_out"
+          ? "\n→ npm run notebooklm:login でログインし直してから再度実行してください"
+          : "")
+    );
   }
   log("Phase3 完了。デック生成の完了待ちへ進みます");
 }
@@ -63,5 +62,4 @@ if (updated?.mangaDeckStatus === "fetched" && updated.mangaDeckUrl) {
   console.log(`\n完了: ${updated.mangaDeckUrl}`);
   process.exit(0);
 }
-console.error(`\n未完了: mangaDeckStatus=${updated?.mangaDeckStatus ?? "不明"} (${updated?.mangaDeckDetail ?? ""})`);
-process.exit(1);
+fail(`\n未完了: mangaDeckStatus=${updated?.mangaDeckStatus ?? "不明"} (${updated?.mangaDeckDetail ?? ""})`);

@@ -1,4 +1,5 @@
 import { registerArticle } from "../shared/firebaseArticleStore.js";
+import { fail } from "./lib/cli.js";
 
 // Entry point for the GitHub Actions `repository_dispatch` workflow.
 // The workflow maps client_payload.{url,title,headline} to these env vars.
@@ -7,8 +8,7 @@ const title = process.env.ARTICLE_TITLE || undefined;
 const headline = process.env.ARTICLE_HEADLINE || undefined;
 
 if (!url.trim()) {
-  console.error("ARTICLE_URL is required");
-  process.exit(1);
+  fail("ARTICLE_URL is required");
 }
 
 try {
@@ -18,6 +18,5 @@ try {
   // the process alive; exit explicitly once the write completes.
   process.exit(0);
 } catch (error) {
-  console.error("registerArticle failed:", error instanceof Error ? error.message : String(error));
-  process.exit(1);
+  fail(`registerArticle failed: ${error instanceof Error ? error.message : String(error)}`);
 }
