@@ -57,10 +57,14 @@
 - 実施: `.env` ローダーを `utils/envFile.ts` に一本化(config.ts / firebaseAdmin.ts の重複解消)。
 - テスト: cliProcess 6件 / envFile 3件を追加(計91件)。
 
-### A-4. 大型ファイルの分割
-- 優先順: `chartRenderer.ts`(624) → `notebookLmPipeline.ts`(567) → `slideJobProcessor.ts`(467) → `socketModeClient.ts`(437)。
-- 分割方針: 「外部 I/O（Playwright 操作・API 呼び出し）」と「純粋ロジック（パース・整形・判定）」を分け、純粋ロジック側にテストを付ける。
-- 完了条件: 各ファイル 300 行以下を目安、分離した純粋ロジックにテストあり。
+### A-4. 大型ファイルの分割 ✅ 完了 (2026-07-20)
+- chartRenderer(624→183): chartData.ts(検証) + chartSvg.ts(SVGサイズ/HTML) を分離
+- notebookLmPipeline(567→176): nblmLock.ts + nblmCommon.ts + notebookLmDeckRetrieval.ts(335) を
+  分離。既存呼び出し元は facade re-export で無変更
+- slideJobProcessor(467→340): slidePrompts.ts + slideDataMeta.ts を分離
+- socketModeClient(437→291): messageGate.ts(受理判定・純粋化) + recentRequestIds.ts
+  (スライド/マンガで重複していた dedup を共通化) を分離
+- 分離した純粋ロジックに計33件のテストを追加(全体124件)
 
 ### A-5. config の整理 ✅ 完了 (2026-07-20)
 - 実施: env スキーマは flat のまま、export を9グループ(server/slack/codex/claude/summary/
@@ -129,7 +133,7 @@
 | 0 | ✅ 完了 (2026-07-20): lint + CI + 周辺テスト追加 | A-1 | なし |
 | 1 | ✅ 完了 (2026-07-20): Slack 入口認証、入力検証、資格情報の外出し | B-1, B-2, B-4 | Phase 0 |
 | 2 | ✅ 完了 (2026-07-20): runner 統合(+injection対策共通化)、ジョブストア下回り、.env ローダー | A-3, B-3 | Phase 0 |
-| 3 | 構造再編: ドメイン分割、大型ファイル分割、config 整理、scripts 統一 | A-2, A-4, A-5, A-6 | Phase 2 |
+| 3 | ✅ 完了 (2026-07-20): ドメイン分割、大型ファイル分割、config 整理、scripts 統一 | A-2, A-4, A-5, A-6 | Phase 2 |
 | 4 | 衛生・横断: audit CI、Rules レビュー、横断パッケージ化判断 | B-5, B-6, C | Phase 1-3 |
 
 ### Phase 0 実施メモ (2026-07-20)

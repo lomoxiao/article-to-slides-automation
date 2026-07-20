@@ -6,13 +6,22 @@ import { runUrlToGasSlidesWorkflow } from "../workflows/urlToGasSlides.js";
 import { parseSlideArgs } from "../utils/parseSlideArgs.js";
 import { parseMangaSlackArgs } from "../utils/parseMangaSlackArgs.js";
 import { enqueueMangaGeneration } from "../domains/manga/mangaGenerationQueue.js";
+import {
+  MANGA_GENERATE_PREFIX,
+  SLIDE_GENERATE_PREFIX,
+  describeSlackMessageEvent,
+  getErrorCode,
+  getRequestId,
+  isChannelAllowed,
+  isGenerateMessage,
+  stripPrefix,
+  type SlackMessageEvent
+} from "./messageGate.js";
+import { RecentRequestIds } from "./recentRequestIds.js";
 
-const SLIDE_GENERATE_PREFIX = "[slide-generate]";
-const MANGA_GENERATE_PREFIX = "[manga-generate]";
 const MANGA_ACCEPTED_TEXT = "漫画生成リクエストを受け付けました。完了後に通知します（生成に数分かかります）。";
-const MAX_PROCESSED_REQUEST_IDS = 500;
-const processedSlideRequestIds = new Set<string>();
-const processedMangaRequestIds = new Set<string>();
+const processedSlideRequestIds = new RecentRequestIds();
+const processedMangaRequestIds = new RecentRequestIds();
 
 type SlashCommandPayload = {
   text?: string;
@@ -24,17 +33,6 @@ type SlashCommandPayload = {
 type SlashCommandEnvelope = {
   body?: SlashCommandPayload;
   ack: (response?: unknown) => Promise<void>;
-};
-
-type SlackMessageEvent = {
-  type?: string;
-  subtype?: string;
-  text?: string;
-  user?: string;
-  bot_id?: string;
-  channel?: string;
-  ts?: string;
-  client_msg_id?: string;
 };
 
 type EventsApiEnvelope = {
@@ -127,24 +125,24 @@ export async function startSlackSocketModeClient() {
         return;
       }
 
-      if (isMangaGenerateMessage(messageEvent)) {
+      if (isGenerateMessage(messageEvent, MANGA_GENERATE_PREFIX, config.slack.completionChannelId)) {
         await handleMangaGenerateMessage(messageEvent);
         return;
       }
 
       logSlideGenerateEventDecision(messageEvent);
 
-      if (!isSlideGenerateMessage(messageEvent)) {
+      if (!isGenerateMessage(messageEvent, SLIDE_GENERATE_PREFIX, config.slack.completionChannelId)) {
         return;
       }
 
-      const requestId = getSlideRequestId(messageEvent);
-      if (hasProcessedSlideRequest(requestId)) {
+      const requestId = getRequestId(messageEvent);
+      if (processedSlideRequestIds.has(requestId)) {
         return;
       }
-      rememberSlideRequest(requestId);
+      processedSlideRequestIds.remember(requestId);
 
-      const slideArgs = parseSlideArgs(stripSlideGeneratePrefix(messageEvent.text ?? ""));
+      const slideArgs = parseSlideArgs(stripPrefix(messageEvent.text ?? "", SLIDE_GENERATE_PREFIX));
       if (!slideArgs.ok) {
         await postSlackText({
           channelId: messageEvent.channel,
@@ -211,44 +209,14 @@ async function safeAck(ack: SlackAck, eventDescription: string): Promise<boolean
   }
 }
 
-function describeSlackMessageEvent(event: SlackMessageEvent | undefined): string {
-  if (!event) {
-    return "event=none";
-  }
-
-  return [
-    `type=${event.type ?? "unknown"}`,
-    `channel=${event.channel ?? "unknown"}`,
-    `ts=${event.ts ?? "unknown"}`,
-    `subtype=${event.subtype ?? "none"}`,
-    `text=${JSON.stringify(previewText(event.text))}`
-  ].join(" ");
-}
-
-function previewText(text: string | undefined): string {
-  const trimmed = text?.replace(/\s+/g, " ").trim() ?? "";
-  return trimmed.length > 120 ? `${trimmed.slice(0, 120)}...` : trimmed;
-}
-
-function getErrorCode(error: unknown): string {
-  if (typeof error === "object" && error !== null && "code" in error) {
-    const code = (error as { code?: unknown }).code;
-    if (typeof code === "string") {
-      return code;
-    }
-  }
-
-  return "unknown";
-}
-
 async function handleMangaGenerateMessage(event: SlackMessageEvent): Promise<void> {
-  const requestId = getMangaRequestId(event);
-  if (hasProcessedMangaRequest(requestId)) {
+  const requestId = getRequestId(event);
+  if (processedMangaRequestIds.has(requestId)) {
     return;
   }
-  rememberMangaRequest(requestId);
+  processedMangaRequestIds.remember(requestId);
 
-  const mangaArgs = parseMangaSlackArgs(stripMangaGeneratePrefix(event.text ?? ""));
+  const mangaArgs = parseMangaSlackArgs(stripPrefix(event.text ?? "", MANGA_GENERATE_PREFIX));
   if (!mangaArgs.ok) {
     await postSlackText({ channelId: event.channel, text: mangaArgs.errorMessage });
     return;
@@ -267,76 +235,6 @@ async function handleMangaGenerateMessage(event: SlackMessageEvent): Promise<voi
   });
 
   await postSlackText({ channelId: event.channel, text: MANGA_ACCEPTED_TEXT });
-}
-
-function isMangaGenerateMessage(event: SlackMessageEvent): boolean {
-  if (event.type !== "message") {
-    return false;
-  }
-
-  const text = event.text?.trim();
-  if (!text?.startsWith(MANGA_GENERATE_PREFIX)) {
-    return false;
-  }
-
-  if (!event.channel || !isAllowedSlideGenerateChannel(event.channel)) {
-    return false;
-  }
-
-  if (event.subtype && event.subtype !== "bot_message") {
-    return false;
-  }
-
-  return true;
-}
-
-function stripMangaGeneratePrefix(text: string) {
-  const trimmed = text.trim();
-  return trimmed.startsWith(MANGA_GENERATE_PREFIX)
-    ? trimmed.slice(MANGA_GENERATE_PREFIX.length).trim()
-    : trimmed;
-}
-
-function getMangaRequestId(event: SlackMessageEvent) {
-  return event.client_msg_id ?? `${event.channel ?? "unknown"}:${event.ts ?? "unknown"}`;
-}
-
-function hasProcessedMangaRequest(requestId: string) {
-  return processedMangaRequestIds.has(requestId);
-}
-
-function rememberMangaRequest(requestId: string) {
-  processedMangaRequestIds.add(requestId);
-
-  if (processedMangaRequestIds.size <= MAX_PROCESSED_REQUEST_IDS) {
-    return;
-  }
-
-  const oldest = processedMangaRequestIds.values().next().value as string | undefined;
-  if (oldest) {
-    processedMangaRequestIds.delete(oldest);
-  }
-}
-
-function isSlideGenerateMessage(event: SlackMessageEvent | undefined): event is SlackMessageEvent {
-  if (!event || event.type !== "message") {
-    return false;
-  }
-
-  const text = event.text?.trim();
-  if (!text?.startsWith(SLIDE_GENERATE_PREFIX)) {
-    return false;
-  }
-
-  if (!event.channel || !isAllowedSlideGenerateChannel(event.channel)) {
-    return false;
-  }
-
-  if (event.subtype && event.subtype !== "bot_message") {
-    return false;
-  }
-
-  return true;
 }
 
 function logSlideGenerateEventDecision(event: SlackMessageEvent | undefined) {
@@ -369,7 +267,7 @@ function logSlideGenerateEventDecision(event: SlackMessageEvent | undefined) {
     return;
   }
 
-  if (!isAllowedSlideGenerateChannel(event.channel)) {
+  if (!isChannelAllowed(event.channel, config.slack.completionChannelId)) {
     console.log(
       `[slide-generate] ignored: channel mismatch received=${event.channel} expected=${config.slack.completionChannelId ?? "unset"}`
     );
@@ -381,7 +279,7 @@ function logSlideGenerateEventDecision(event: SlackMessageEvent | undefined) {
     return;
   }
 
-  const args = parseSlideArgs(stripSlideGeneratePrefix(text));
+  const args = parseSlideArgs(stripPrefix(text, SLIDE_GENERATE_PREFIX));
   if (!args.ok) {
     console.log(`[slide-generate] accepted with parse error: ${args.errorMessage} text=${JSON.stringify(preview)}`);
     return;
@@ -390,48 +288,4 @@ function logSlideGenerateEventDecision(event: SlackMessageEvent | undefined) {
   console.log(
     `[slide-generate] accepted: channel=${event.channel} subtype=${event.subtype ?? "none"} user=${event.user ?? "unknown"} bot=${event.bot_id ?? "none"}`
   );
-}
-
-function stripSlideGeneratePrefix(text: string) {
-  const trimmed = text.trim();
-  return trimmed.startsWith(SLIDE_GENERATE_PREFIX)
-    ? trimmed.slice(SLIDE_GENERATE_PREFIX.length).trim()
-    : trimmed;
-}
-
-function isAllowedSlideGenerateChannel(channelId: string) {
-  if (isSampleChannelId(config.slack.completionChannelId)) {
-    return true;
-  }
-
-  return config.slack.completionChannelId === channelId;
-}
-
-function getSlideRequestId(event: SlackMessageEvent) {
-  return event.client_msg_id ?? `${event.channel ?? "unknown"}:${event.ts ?? "unknown"}`;
-}
-
-function hasProcessedSlideRequest(requestId: string) {
-  return processedSlideRequestIds.has(requestId);
-}
-
-function rememberSlideRequest(requestId: string) {
-  processedSlideRequestIds.add(requestId);
-
-  if (processedSlideRequestIds.size <= MAX_PROCESSED_REQUEST_IDS) {
-    return;
-  }
-
-  const oldest = processedSlideRequestIds.values().next().value as string | undefined;
-  if (oldest) {
-    processedSlideRequestIds.delete(oldest);
-  }
-}
-
-function isSampleChannelId(id: string | undefined): boolean {
-  if (!id) {
-    return true;
-  }
-
-  return /^C0{4,}/i.test(id);
 }
