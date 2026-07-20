@@ -80,7 +80,7 @@ export async function runNotebookLmSourceSync(
   }
 
   try {
-    if (!config.NOTEBOOKLM_NOTEBOOK_ID) {
+    if (!config.notebookLm.notebookId) {
       log("NotebookLM: NOTEBOOKLM_NOTEBOOK_ID 未設定のため claude --chrome 経路で実行します");
       return await runLegacySourceSync(job, log, "NOTEBOOKLM_NOTEBOOK_ID 未設定", deps);
     }
@@ -117,7 +117,7 @@ export async function runNotebookLmSourceSync(
       }
     }
 
-    if (lastFailure?.kind === "ui_mismatch" && config.MANGA_NBLM_FALLBACK_CLAUDE_CHROME) {
+    if (lastFailure?.kind === "ui_mismatch" && config.manga.nblmFallbackClaudeChrome) {
       await deps.notifyFallback("Phase3(ソース同期)", lastFailure.detail, log);
       return await runLegacySourceSync(job, log, `ui_mismatch: ${lastFailure.detail}`, deps);
     }
@@ -145,7 +145,7 @@ async function runPlaywrightSourceSyncOnce(
   deps: SourceSyncDeps
 ): Promise<PlaywrightSyncOnceResult> {
   const opened = await deps.openSession({
-    notebookId: config.NOTEBOOKLM_NOTEBOOK_ID as string,
+    notebookId: config.notebookLm.notebookId as string,
     jobDir: job.jobDir,
     logger: log
   });
@@ -179,10 +179,10 @@ async function triggerStep3WithRetries(
   log: (message: string) => void
 ): Promise<{ ok: true } | { ok: false; failure: DriverFailure }> {
   let lastFailure: DriverFailure | undefined;
-  for (let attempt = 0; attempt <= config.MANGA_NBLM_CHAT_RETRIES; attempt += 1) {
+  for (let attempt = 0; attempt <= config.manga.nblmChatRetries; attempt += 1) {
     if (attempt > 0) {
       const backoffMin = CHAT_RETRY_BACKOFF_MIN[Math.min(attempt - 1, CHAT_RETRY_BACKOFF_MIN.length - 1)];
-      log(`NotebookLM: 回答不能応答のため ${backoffMin} 分待機して再送します (${attempt}/${config.MANGA_NBLM_CHAT_RETRIES})`);
+      log(`NotebookLM: 回答不能応答のため ${backoffMin} 分待機して再送します (${attempt}/${config.manga.nblmChatRetries})`);
       await sleep(backoffMin * 60_000);
       const reloaded = await session.reload();
       if (!reloaded.ok) return reloaded;
@@ -229,7 +229,7 @@ export async function runNotebookLmDeckRetrieval(input: DeckRetrievalInput): Pro
   const log = input.logger ?? (() => {});
   const { job } = input;
 
-  if (!config.MANGA_DECK_AUTOFETCH) {
+  if (!config.manga.deckAutofetch) {
     log("デックURL取得: スキップ (MANGA_DECK_AUTOFETCH 未設定)");
     if (input.notebookLmStatus === "executed") {
       await writeRecoverableState(input, job, "url_retrieval", "URLを手動登録してください", {
@@ -251,7 +251,7 @@ export async function runNotebookLmDeckRetrieval(input: DeckRetrievalInput): Pro
   }
 
   try {
-    const usePlaywright = job.nblmEngine === "playwright" && Boolean(config.NOTEBOOKLM_NOTEBOOK_ID);
+    const usePlaywright = job.nblmEngine === "playwright" && Boolean(config.notebookLm.notebookId);
     if (usePlaywright) {
       await runPlaywrightDeckRetrieval(input, job, log);
     } else {
@@ -281,7 +281,7 @@ async function runPlaywrightDeckRetrieval(
       log(`デックURL取得: ドライバを再起動して再試行します (${attempt}/${DRIVER_RESTART_RETRIES})`);
     }
     const opened = await openNotebookLmSession({
-      notebookId: config.NOTEBOOKLM_NOTEBOOK_ID as string,
+      notebookId: config.notebookLm.notebookId as string,
       jobDir: job.jobDir,
       logger: log
     });
@@ -337,7 +337,7 @@ async function runPlaywrightDeckRetrieval(
   }
 
   const failure = lastFailure ?? { kind: "unreachable" as const, detail: "デックURL取得に失敗しました" };
-  if (failure.kind === "ui_mismatch" && config.MANGA_NBLM_FALLBACK_CLAUDE_CHROME) {
+  if (failure.kind === "ui_mismatch" && config.manga.nblmFallbackClaudeChrome) {
     await notifyUiFallback("Phase4(デックURL取得)", failure.detail, log);
     await runLegacyDeckRetrieval(input, job, log, { skipInitialWait: true });
     return;
@@ -377,21 +377,21 @@ async function runLegacyDeckRetrieval(
   options?: { skipInitialWait?: boolean }
 ): Promise<void> {
   if (!options?.skipInitialWait) {
-    log(`デックURL取得: 生成完了を待機します (${Math.round(config.MANGA_DECK_INITIAL_WAIT_MS / 1000)}秒) ...`);
-    await sleep(config.MANGA_DECK_INITIAL_WAIT_MS);
+    log(`デックURL取得: 生成完了を待機します (${Math.round(config.manga.deckInitialWaitMs / 1000)}秒) ...`);
+    await sleep(config.manga.deckInitialWaitMs);
   }
 
   let result: MangaDeckFetchResult = await fetchMangaDeckUrl({ jobDir: job.jobDir, logger: log });
 
   let retries = 0;
-  while (shouldRetryMangaDeckFetch(result) && retries < config.MANGA_DECK_MAX_RETRIES) {
+  while (shouldRetryMangaDeckFetch(result) && retries < config.manga.deckMaxRetries) {
     retries += 1;
     const reason = result.status === "pending" ? "まだ生成中" : "一時的なURL取得失敗";
     log(
-      `デックURL取得: ${reason}。${Math.round(config.MANGA_DECK_RETRY_WAIT_MS / 1000)}秒待機して再確認します ` +
-        `(${retries}/${config.MANGA_DECK_MAX_RETRIES})`
+      `デックURL取得: ${reason}。${Math.round(config.manga.deckRetryWaitMs / 1000)}秒待機して再確認します ` +
+        `(${retries}/${config.manga.deckMaxRetries})`
     );
-    await sleep(config.MANGA_DECK_RETRY_WAIT_MS);
+    await sleep(config.manga.deckRetryWaitMs);
     result = await fetchMangaDeckUrl({ jobDir: job.jobDir, logger: log });
   }
 
@@ -402,7 +402,7 @@ async function runLegacyDeckRetrieval(
 
   const detail =
     result.status === "pending"
-      ? `スライド生成が${config.MANGA_DECK_MAX_RETRIES}回の再確認後も完了しませんでした`
+      ? `スライド生成が${config.manga.deckMaxRetries}回の再確認後も完了しませんでした`
       : result.detail;
   const stage: ArtifactStage = result.status === "retrieval_failed" ? "url_retrieval" : "deck_generation";
   const code =

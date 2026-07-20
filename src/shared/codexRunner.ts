@@ -200,7 +200,7 @@ async function runCodexExec(
   options: RunCodexExecOptions = {}
 ): Promise<{ exitCode: number | null; stdout: string; stderr: string; codexHome: string }> {
   const codexHome = await prepareRunnerCodexHome(options.codexHome);
-  const command = resolveCodexCommand(config.CODEX_CLI_COMMAND, codexHome);
+  const command = resolveCodexCommand(config.codex.cliCommand, codexHome);
   const promptFilePath = options.promptFilePath ?? path.join(jobDir, "codex-exec-input.md");
   const lastMessagePath = options.lastMessagePath ?? path.join(jobDir, "codex-last-message.txt");
   await writeFile(promptFilePath, prompt, "utf8");
@@ -208,13 +208,13 @@ async function runCodexExec(
   const args = buildCodexExecArgs(options, lastMessagePath);
   const result = await spawnCli(command, args, {
     stdin: prompt,
-    timeoutMs: config.CODEX_EXEC_TIMEOUT_MS,
+    timeoutMs: config.codex.execTimeoutMs,
     shell: false,
     env: {
       ...process.env,
       CODEX_HOME: codexHome
     },
-    timeoutError: () => new Error(`codex exec timed out after ${config.CODEX_EXEC_TIMEOUT_MS}ms`)
+    timeoutError: () => new Error(`codex exec timed out after ${config.codex.execTimeoutMs}ms`)
   });
   return { ...result, codexHome };
 }
@@ -227,7 +227,7 @@ export function buildCodexExecArgs(options: RunCodexExecOptions, lastMessagePath
           "--last",
           "--skip-git-repo-check",
           "--model",
-          config.CODEX_MODEL,
+          config.codex.model,
           "--output-last-message",
           lastMessagePath,
           ...(options.outputSchemaPath ? ["--output-schema", options.outputSchemaPath] : []),
@@ -239,11 +239,11 @@ export function buildCodexExecArgs(options: RunCodexExecOptions, lastMessagePath
           "-C",
           process.cwd(),
           "--model",
-          config.CODEX_MODEL,
+          config.codex.model,
           "--output-last-message",
           lastMessagePath,
           "--sandbox",
-          config.CODEX_EXEC_SANDBOX,
+          config.codex.execSandbox,
           ...(options.imagePaths ?? []).flatMap((imagePath) => ["--image", imagePath]),
           ...(options.outputSchemaPath ? ["--output-schema", options.outputSchemaPath] : []),
           "-"
@@ -274,8 +274,8 @@ function extractJsonArray(text: string) {
 }
 
 async function prepareRunnerCodexHome(codexHome?: string) {
-  const runnerHome = path.resolve(codexHome ?? config.CODEX_RUNNER_HOME);
-  const sourceHome = path.resolve(config.CODEX_SOURCE_HOME ?? process.env.CODEX_HOME ?? path.join(process.env.USERPROFILE ?? "", ".codex"));
+  const runnerHome = path.resolve(codexHome ?? config.codex.runnerHome);
+  const sourceHome = path.resolve(config.codex.sourceHome ?? process.env.CODEX_HOME ?? path.join(process.env.USERPROFILE ?? "", ".codex"));
 
   await mkdir(runnerHome, { recursive: true });
   await mkdir(path.join(runnerHome, "bin"), { recursive: true });
@@ -293,7 +293,7 @@ async function prepareRunnerCodexHome(codexHome?: string) {
     );
   }
   await copyIfExists(path.join(sourceHome, "AGENTS.md"), path.join(runnerHome, "AGENTS.md"));
-  await copyExeIfNeeded(resolveExternalCodexCommand(config.CODEX_CLI_COMMAND), path.join(runnerHome, "bin", "codex.exe"));
+  await copyExeIfNeeded(resolveExternalCodexCommand(config.codex.cliCommand), path.join(runnerHome, "bin", "codex.exe"));
 
   return runnerHome;
 }
@@ -325,7 +325,7 @@ async function copyExeIfNeeded(source: string, destination: string) {
   }
 }
 
-function resolveCodexCommand(command: string, codexHome = config.CODEX_RUNNER_HOME) {
+function resolveCodexCommand(command: string, codexHome = config.codex.runnerHome) {
   const runnerCodex = path.resolve(codexHome, "bin", "codex.exe");
   if (process.platform === "win32" && existsSync(runnerCodex)) {
     return runnerCodex;

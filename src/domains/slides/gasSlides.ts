@@ -30,7 +30,7 @@ export async function createSlidesViaGas(slideData: unknown[]): Promise<GasSlide
   const result = await postGas<GasSlidesResult>({
     slideData,
     settings: {
-      driveFolderId: config.GOOGLE_DRIVE_FOLDER_ID
+      driveFolderId: config.google.driveFolderId
     }
   });
 
@@ -61,14 +61,14 @@ export async function convertJsonToSvgBatchViaGas(
 }
 
 async function postGas<T>(body: unknown): Promise<T> {
-  if (!config.GAS_WEB_APP_URL) {
+  if (!config.google.gasWebAppUrl) {
     throw new Error("GAS_WEB_APP_URL is not set in .env");
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), GAS_REQUEST_TIMEOUT_MS);
 
-  const response = await fetch(config.GAS_WEB_APP_URL, {
+  const response = await fetch(config.google.gasWebAppUrl, {
     method: "POST",
     headers: {
       "content-type": "application/json"

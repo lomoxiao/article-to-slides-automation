@@ -22,7 +22,7 @@ type RunClaudeInput = {
   sessionId?: string;
   /** 既存セッションを継続する場合の ID。sessionId とは排他。 */
   resumeSessionId?: string;
-  /** モデル別名 or 正式名。未指定なら config.CLAUDE_MODEL。 */
+  /** モデル別名 or 正式名。未指定なら config.claude.model。 */
   model?: string;
 };
 
@@ -52,7 +52,7 @@ export async function runClaudeHeadless(input: RunClaudeInput): Promise<ClaudeRu
     throw new Error("sessionId と resumeSessionId は同時に指定できません");
   }
 
-  const model = input.model ?? config.CLAUDE_MODEL;
+  const model = input.model ?? config.claude.model;
   const args = ["-p", "--output-format", "json", "--model", model, "--disallowedTools", ...DISALLOWED_TOOLS];
 
   if (input.sessionId) {
@@ -68,7 +68,7 @@ export async function runClaudeHeadless(input: RunClaudeInput): Promise<ClaudeRu
   await writeFile(inputPath, input.prompt, "utf8");
 
   try {
-    const { exitCode, stdout, stderr } = await spawnClaude(args, input.prompt, config.CLAUDE_EXEC_TIMEOUT_MS);
+    const { exitCode, stdout, stderr } = await spawnClaude(args, input.prompt, config.claude.execTimeoutMs);
     await writeFile(stdoutPath, stdout, "utf8");
     await writeFile(stderrPath, stderr, "utf8");
 
@@ -137,7 +137,7 @@ export function spawnClaude(
   // Windows では claude は claude.cmd 経由のため shell:true で起動する。
   // 引数は単純トークン(UUID/モデル名/フラグ)のみ。プロンプトは stdin から渡すので
   // shell によるクォート崩れの心配はない。
-  return spawnCli(config.CLAUDE_CLI_COMMAND, args, {
+  return spawnCli(config.claude.cliCommand, args, {
     stdin: prompt,
     timeoutMs,
     shell: true,

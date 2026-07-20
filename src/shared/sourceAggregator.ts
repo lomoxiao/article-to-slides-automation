@@ -18,11 +18,11 @@ const MAX_BODY_LENGTH = 60_000;
  */
 function buildExtractorOptions(): ExtractorOptions {
   return {
-    youtubeApiKey: config.YOUTUBE_API_KEY,
+    youtubeApiKey: config.web.youtubeApiKey,
     fetchReferences: false,
     x: {
-      sessionStatePath: config.X_SESSION_STATE_PATH,
-      headless: config.X_HEADLESS,
+      sessionStatePath: config.web.xSessionStatePath,
+      headless: config.web.xHeadless,
       channel: "chrome"
     },
     // web記事の複数ページ巡回。ドメイン別の成功パターンを学習ストアから読み、
@@ -33,11 +33,11 @@ function buildExtractorOptions(): ExtractorOptions {
     },
     // ログイン必須サイトのセッション取得。セッションは npm run session:capture -- <domain> で保存。
     playwrightSessions: {
-      dir: config.WEB_SESSIONS_DIR,
-      loginRequiredDomains: config.WEB_LOGIN_REQUIRED_DOMAINS.split(",")
+      dir: config.web.sessionsDir,
+      loginRequiredDomains: config.web.loginRequiredDomains.split(",")
         .map((domain) => domain.trim())
         .filter(Boolean),
-      headless: config.X_HEADLESS,
+      headless: config.web.xHeadless,
       channel: "chrome"
     }
   };
@@ -81,14 +81,14 @@ export async function fetchMultipleSourceContent(urls: string[]): Promise<Merged
 }
 
 export async function fetchResearchContent(researchPrompt: string): Promise<MergedSourceContent> {
-  if (!config.TAVILY_API_KEY) {
+  if (!config.web.tavilyApiKey) {
     throw new Error("リサーチモードを使うには TAVILY_API_KEY を設定してください");
   }
 
   const response = await fetch("https://api.tavily.com/search", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ api_key: config.TAVILY_API_KEY, query: researchPrompt, max_results: 10 })
+    body: JSON.stringify({ api_key: config.web.tavilyApiKey, query: researchPrompt, max_results: 10 })
   });
 
   const text = await response.text();

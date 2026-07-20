@@ -57,7 +57,7 @@ export async function processSlideJob(
   options: ProcessSlideJobOptions = {}
 ): Promise<ProcessSlideJobResult | PreparedSlideJobResult> {
   const logger = options.logger ?? console;
-  const autoRunCodex = options.autoRunCodex ?? config.AUTO_RUN_CODEX;
+  const autoRunCodex = options.autoRunCodex ?? config.codex.autoRun;
 
   try {
     const { job, dir } = await readSlideJob(jobId);

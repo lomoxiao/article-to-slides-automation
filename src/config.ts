@@ -6,12 +6,13 @@ import { loadDotEnv } from "./utils/envFile.js";
 
 loadDotEnv();
 
+// 環境変数スキーマは env 名そのまま(flat)で定義し、export はドメイン別にグループ化する。
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   SLACK_APP_TOKEN: z.string().optional(),
   SLACK_BOT_TOKEN: z.string().optional(),
   SLACK_COMPLETION_CHANNEL_ID: z.string().optional(),
-  AUTO_RUN_CODEX: z.coerce.boolean().default(true),
+  AUTO_RUN_CODEX: envBool(true),
   CODEX_CLI_COMMAND: z.string()
     .default("codex")
     .refine(
@@ -56,14 +57,14 @@ const envSchema = z.object({
   // 固定ノートブックの step1/step2 ソースを Drive 同期し、チャットで Step3 をトリガする。
   // 既定 false(安全側)。有効化するにはホストで Chrome 起動 + Claude in Chrome 拡張接続 +
   // NotebookLM ログイン維持が必要。
-  MANGA_NOTEBOOKLM_AUTOSYNC: z.coerce.boolean().default(false),
+  MANGA_NOTEBOOKLM_AUTOSYNC: envBool(false),
   // 操作対象の固定ノートブック名。
   MANGA_NOTEBOOKLM_NAME: z.string().default("漫画Maker"),
   // チャット応答待ちを含むブラウザ操作の上限時間(生成 step1/step2 とは別枠)。
   MANGA_NOTEBOOKLM_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
   // Phase4: Step3 で生成されたスライドデックの共有URLを取得し Firebase の manga.url へ
   // 登録する。Step3 が executed の時のみ動く後続フェーズ。既定 false(安全側)。
-  MANGA_DECK_AUTOFETCH: z.coerce.boolean().default(false),
+  MANGA_DECK_AUTOFETCH: envBool(false),
   // --- NotebookLM 決定論 Playwright ドライバ(主経路) ---
   // 専用 Chrome プロファイル。`npm run notebooklm:login` で1回だけ手動ログインして永続化する。
   // ユーザー既定プロファイルは Chrome の制約で自動操作に使えないため必ず専用ディレクトリにする。
@@ -75,15 +76,15 @@ const envSchema = z.object({
   // UUID を取り出せない不正値でも config 全体を落とさない(下で警告する)。
   NOTEBOOKLM_NOTEBOOK_ID: z.preprocess((v) => extractNotebookId(v), z.string().optional()),
   // 既定 false(headed)。Google ログイン維持と挙動検証のしやすさを優先する。
-  NOTEBOOKLM_HEADLESS: z.coerce.boolean().default(false),
+  NOTEBOOKLM_HEADLESS: envBool(false, { emptyMeans: "default" }),
   // デック生成完了のポーリング間隔と総待機上限(Playwright 経路)。
   MANGA_DECK_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
   MANGA_DECK_COMPLETE_TIMEOUT_MS: z.coerce.number().int().positive().default(2_400_000),
   // 「現在、回答できません」検出時の reload+再送 回数(バックオフ 2/4/8分)。
   MANGA_NBLM_CHAT_RETRIES: z.coerce.number().int().nonnegative().default(3),
   // セレクタ不一致(ui_mismatch)時に claude --chrome 経路へフォールバックする。
-  // 無効化は空文字を設定する(z.coerce.boolean のため "false" は真になる点に注意)。
-  MANGA_NBLM_FALLBACK_CLAUDE_CHROME: z.coerce.boolean().default(true),
+  // "false"・"0"・空文字のいずれでも無効化できる。
+  MANGA_NBLM_FALLBACK_CLAUDE_CHROME: envBool(true),
   // --- 以下3つは claude --chrome フォールバック経路専用(旧 Phase4 の待機モデル) ---
   // Step3 トリガ後、生成完了を見込んで最初に待つ固定時間(約10分)。
   MANGA_DECK_INITIAL_WAIT_MS: z.coerce.number().int().positive().default(600_000),
@@ -104,10 +105,7 @@ const envSchema = z.object({
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
     z.string().default(join(homedir(), ".content-extractor", "x-session.json"))
   ),
-  X_HEADLESS: z.preprocess(
-    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
-    z.coerce.boolean().default(true)
-  ),
+  X_HEADLESS: envBool(true, { emptyMeans: "default" }),
   // ログイン必須サイト用のドメイン別Playwrightセッション(storageState)保存先。
   WEB_SESSIONS_DIR: z.preprocess(
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
@@ -121,9 +119,76 @@ const envSchema = z.object({
   )
 });
 
-export const config = envSchema.parse(process.env);
+const env = envSchema.parse(process.env);
 
-if (process.env.NOTEBOOKLM_NOTEBOOK_ID?.trim() && !config.NOTEBOOKLM_NOTEBOOK_ID) {
+// ドメイン別にグループ化した設定。env 変数名との対応は上のスキーマを参照。
+export const config = {
+  server: {
+    port: env.PORT
+  },
+  slack: {
+    appToken: env.SLACK_APP_TOKEN,
+    botToken: env.SLACK_BOT_TOKEN,
+    completionChannelId: env.SLACK_COMPLETION_CHANNEL_ID
+  },
+  codex: {
+    autoRun: env.AUTO_RUN_CODEX,
+    cliCommand: env.CODEX_CLI_COMMAND,
+    runnerHome: env.CODEX_RUNNER_HOME,
+    sourceHome: env.CODEX_SOURCE_HOME,
+    model: env.CODEX_MODEL,
+    execSandbox: env.CODEX_EXEC_SANDBOX,
+    execTimeoutMs: env.CODEX_EXEC_TIMEOUT_MS
+  },
+  claude: {
+    anthropicAuthToken: env.ANTHROPIC_AUTH_TOKEN,
+    cliCommand: env.CLAUDE_CLI_COMMAND,
+    model: env.CLAUDE_MODEL,
+    execTimeoutMs: env.CLAUDE_EXEC_TIMEOUT_MS
+  },
+  summary: {
+    provider: env.SUMMARY_PROVIDER
+  },
+  google: {
+    authMode: env.GOOGLE_AUTH_MODE,
+    oauthCredentials: env.GOOGLE_OAUTH_CREDENTIALS,
+    oauthToken: env.GOOGLE_OAUTH_TOKEN,
+    driveFolderId: env.GOOGLE_DRIVE_FOLDER_ID,
+    slidesTemplateId: env.GOOGLE_SLIDES_TEMPLATE_ID,
+    gasWebAppUrl: env.GAS_WEB_APP_URL
+  },
+  manga: {
+    driveFolderId: env.MANGA_DRIVE_FOLDER_ID,
+    notebookLmAutosync: env.MANGA_NOTEBOOKLM_AUTOSYNC,
+    notebookLmName: env.MANGA_NOTEBOOKLM_NAME,
+    notebookLmTimeoutMs: env.MANGA_NOTEBOOKLM_TIMEOUT_MS,
+    deckAutofetch: env.MANGA_DECK_AUTOFETCH,
+    deckPollIntervalMs: env.MANGA_DECK_POLL_INTERVAL_MS,
+    deckCompleteTimeoutMs: env.MANGA_DECK_COMPLETE_TIMEOUT_MS,
+    nblmChatRetries: env.MANGA_NBLM_CHAT_RETRIES,
+    nblmFallbackClaudeChrome: env.MANGA_NBLM_FALLBACK_CLAUDE_CHROME,
+    deckInitialWaitMs: env.MANGA_DECK_INITIAL_WAIT_MS,
+    deckRetryWaitMs: env.MANGA_DECK_RETRY_WAIT_MS,
+    deckMaxRetries: env.MANGA_DECK_MAX_RETRIES,
+    deckFetchMaxTurns: env.MANGA_DECK_FETCH_MAX_TURNS,
+    deckFetchTimeoutMs: env.MANGA_DECK_FETCH_TIMEOUT_MS
+  },
+  notebookLm: {
+    profileDir: env.NOTEBOOKLM_PROFILE_DIR,
+    notebookId: env.NOTEBOOKLM_NOTEBOOK_ID,
+    headless: env.NOTEBOOKLM_HEADLESS
+  },
+  web: {
+    tavilyApiKey: env.TAVILY_API_KEY,
+    youtubeApiKey: env.YOUTUBE_API_KEY,
+    xSessionStatePath: env.X_SESSION_STATE_PATH,
+    xHeadless: env.X_HEADLESS,
+    sessionsDir: env.WEB_SESSIONS_DIR,
+    loginRequiredDomains: env.WEB_LOGIN_REQUIRED_DOMAINS
+  }
+} as const;
+
+if (process.env.NOTEBOOKLM_NOTEBOOK_ID?.trim() && !env.NOTEBOOKLM_NOTEBOOK_ID) {
   console.warn(
     "[config] NOTEBOOKLM_NOTEBOOK_ID is set but no notebook UUID could be extracted from it. " +
       "The Playwright NotebookLM driver is DISABLED (falling back to claude --chrome). " +
@@ -131,12 +196,42 @@ if (process.env.NOTEBOOKLM_NOTEBOOK_ID?.trim() && !config.NOTEBOOKLM_NOTEBOOK_ID
   );
 }
 
-if (config.ANTHROPIC_AUTH_TOKEN) {
+if (env.ANTHROPIC_AUTH_TOKEN) {
   console.warn(
     "[config] ANTHROPIC_AUTH_TOKEN is set. This DISABLES the Claude in Chrome extension: `claude --chrome` " +
     "(NotebookLM sync / deck URL fetch) falls back to Playwright with no logged-in Google session, so it will " +
     "fail with a sign-in redirect. Remove ANTHROPIC_AUTH_TOKEN from .env and use the subscription login (`claude`, then /login)."
   );
+}
+
+/**
+ * 環境変数の boolean パース。z.coerce.boolean は Boolean(文字列) のため
+ * "false" が true になる罠があり(旧実装)、明示的な語彙で解釈する。
+ * - "1" / "true" / "yes" / "on"  → true
+ * - "0" / "false" / "no" / "off" → false
+ * - 空文字 → false(emptyMeans: "default" 指定時は既定値)
+ * - 未設定 → 既定値 / 解釈不能な値 → 警告して既定値(config 全体は落とさない)
+ */
+function envBool(defaultValue: boolean, options: { emptyMeans?: "false" | "default" } = {}) {
+  return z.preprocess((value) => {
+    if (typeof value !== "string") {
+      return defaultValue;
+    }
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "") {
+      return options.emptyMeans === "default" ? defaultValue : false;
+    }
+    if (["1", "true", "yes", "on"].includes(normalized)) {
+      return true;
+    }
+    if (["0", "false", "no", "off"].includes(normalized)) {
+      return false;
+    }
+    console.warn(
+      `[config] unrecognized boolean value ${JSON.stringify(value)}; using default (${defaultValue}).`
+    );
+    return defaultValue;
+  }, z.boolean());
 }
 
 /**
@@ -177,4 +272,3 @@ function resolveCredentialPath(name: string): string {
   }
   return canonical;
 }
-

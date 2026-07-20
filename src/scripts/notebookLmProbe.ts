@@ -13,7 +13,7 @@ import {
 // - 本番と同じセレクタ群の照合結果表示(UI変更時の修理箇所の特定)
 // - Studio artifact 一覧の取得確認
 
-if (!config.NOTEBOOKLM_NOTEBOOK_ID) {
+if (!config.notebookLm.notebookId) {
   console.error(
     "NOTEBOOKLM_NOTEBOOK_ID が未設定です。.env にノートブック URL の /notebook/<UUID> 部分を設定してください。"
   );
@@ -23,12 +23,12 @@ if (!config.NOTEBOOKLM_NOTEBOOK_ID) {
 const probeDir = path.join("jobs", "manga", ".probe");
 await mkdir(probeDir, { recursive: true });
 
-console.log(`プロファイル: ${config.NOTEBOOKLM_PROFILE_DIR}`);
-console.log(`ノートブック: ${config.NOTEBOOKLM_NOTEBOOK_ID}`);
+console.log(`プロファイル: ${config.notebookLm.profileDir}`);
+console.log(`ノートブック: ${config.notebookLm.notebookId}`);
 console.log("接続しています...");
 
 const opened = await openNotebookLmSession({
-  notebookId: config.NOTEBOOKLM_NOTEBOOK_ID,
+  notebookId: config.notebookLm.notebookId,
   jobDir: probeDir,
   logger: (m) => console.log(`  ${m}`)
 });

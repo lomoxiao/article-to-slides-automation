@@ -36,9 +36,9 @@ if (!result.ok) {
 console.log(JSON.stringify(result, null, 2));
 
 async function runPreflight(): Promise<PreflightResult> {
-  const runnerHome = path.resolve(config.CODEX_RUNNER_HOME);
-  const sourceHome = path.resolve(config.CODEX_SOURCE_HOME ?? path.join(homedir(), ".codex"));
-  await copyConfigFile(resolveExternalCodexPath(config.CODEX_CLI_COMMAND), path.join(runnerHome, "bin", "codex.exe"));
+  const runnerHome = path.resolve(config.codex.runnerHome);
+  const sourceHome = path.resolve(config.codex.sourceHome ?? path.join(homedir(), ".codex"));
+  await copyConfigFile(resolveExternalCodexPath(config.codex.cliCommand), path.join(runnerHome, "bin", "codex.exe"));
   const runnerHomeWritable = await checkRunnerHomeWritable(runnerHome);
   const authJsonCopied = await copyConfigFile(path.join(sourceHome, "auth.json"), path.join(runnerHome, "auth.json"));
   const configCopy = await copySanitizedCodexConfig(
@@ -50,7 +50,7 @@ async function runPreflight(): Promise<PreflightResult> {
       `[codex:preflight] Ignored unsupported top-level service_tier=${JSON.stringify(configCopy.removedServiceTier)}.`
     );
   }
-  const resolvedCodexPath = resolveCodexPath(config.CODEX_CLI_COMMAND);
+  const resolvedCodexPath = resolveCodexPath(config.codex.cliCommand);
   const pathNotWindowsApps = !resolvedCodexPath.toLowerCase().includes("\\windowsapps\\");
   const fileExists = Boolean(resolvedCodexPath) && existsSync(resolvedCodexPath);
   const versionCheck = fileExists
@@ -82,7 +82,7 @@ async function runPreflight(): Promise<PreflightResult> {
 }
 
 function resolveCodexPath(command: string) {
-  const runnerCodex = path.resolve(config.CODEX_RUNNER_HOME, "bin", "codex.exe");
+  const runnerCodex = path.resolve(config.codex.runnerHome, "bin", "codex.exe");
   if (process.platform === "win32" && existsSync(runnerCodex)) {
     return runnerCodex;
   }

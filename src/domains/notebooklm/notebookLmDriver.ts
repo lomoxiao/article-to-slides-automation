@@ -210,7 +210,7 @@ export class NotebookLmSession {
    * - beforeIds が空(旧ジョブの resume)は最上位 artifact を対象にする(旧挙動フォールバック)
    */
   async waitForNewArtifact(beforeIds: string[]): Promise<DriverResult<string>> {
-    const deadline = Date.now() + config.MANGA_DECK_COMPLETE_TIMEOUT_MS;
+    const deadline = Date.now() + config.manga.deckCompleteTimeoutMs;
     const legacyMode = beforeIds.length === 0;
 
     for (;;) {
@@ -238,7 +238,7 @@ export class NotebookLmSession {
       if (Date.now() >= deadline) {
         return this.fail(
           "timeout",
-          `デック生成が ${Math.round(config.MANGA_DECK_COMPLETE_TIMEOUT_MS / 60_000)} 分以内に完了しませんでした`,
+          `デック生成が ${Math.round(config.manga.deckCompleteTimeoutMs / 60_000)} 分以内に完了しませんでした`,
           "deck-wait"
         );
       }
@@ -248,7 +248,7 @@ export class NotebookLmSession {
           ? "NotebookLM: デック生成中。待機して再確認します"
           : "NotebookLM: 新規デック未出現。待機して再確認します"
       );
-      await sleep(config.MANGA_DECK_POLL_INTERVAL_MS);
+      await sleep(config.manga.deckPollIntervalMs);
       const reloaded = await this.reload();
       if (!reloaded.ok) return reloaded;
     }
@@ -319,9 +319,9 @@ export async function openNotebookLmSession(input: OpenSessionInput): Promise<Dr
   const log = input.logger ?? (() => {});
   let context: BrowserContext;
   try {
-    context = await chromium.launchPersistentContext(config.NOTEBOOKLM_PROFILE_DIR, {
+    context = await chromium.launchPersistentContext(config.notebookLm.profileDir, {
       channel: "chrome",
-      headless: config.NOTEBOOKLM_HEADLESS,
+      headless: config.notebookLm.headless,
       viewport: { width: 1440, height: 900 },
       // 自動操作バナー/フラグを外し、Google ログインセッションの拒否リスクを下げる。
       ignoreDefaultArgs: ["--enable-automation"],

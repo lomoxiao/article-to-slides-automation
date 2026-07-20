@@ -59,12 +59,12 @@ type EnqueueSlideGenerationInput = {
 };
 
 export async function startSlackSocketModeClient() {
-  if (!config.SLACK_APP_TOKEN) {
+  if (!config.slack.appToken) {
     throw new Error("SLACK_APP_TOKEN is required to start Slack Socket Mode");
   }
 
   const client = new SocketModeClient({
-    appToken: config.SLACK_APP_TOKEN
+    appToken: config.slack.appToken
   });
 
   client.on("slash_commands", async ({ body, ack }: SlashCommandEnvelope) => {
@@ -371,7 +371,7 @@ function logSlideGenerateEventDecision(event: SlackMessageEvent | undefined) {
 
   if (!isAllowedSlideGenerateChannel(event.channel)) {
     console.log(
-      `[slide-generate] ignored: channel mismatch received=${event.channel} expected=${config.SLACK_COMPLETION_CHANNEL_ID ?? "unset"}`
+      `[slide-generate] ignored: channel mismatch received=${event.channel} expected=${config.slack.completionChannelId ?? "unset"}`
     );
     return;
   }
@@ -400,11 +400,11 @@ function stripSlideGeneratePrefix(text: string) {
 }
 
 function isAllowedSlideGenerateChannel(channelId: string) {
-  if (isSampleChannelId(config.SLACK_COMPLETION_CHANNEL_ID)) {
+  if (isSampleChannelId(config.slack.completionChannelId)) {
     return true;
   }
 
-  return config.SLACK_COMPLETION_CHANNEL_ID === channelId;
+  return config.slack.completionChannelId === channelId;
 }
 
 function getSlideRequestId(event: SlackMessageEvent) {

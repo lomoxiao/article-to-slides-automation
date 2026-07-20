@@ -12,7 +12,7 @@ app.get("/health", async () => ({ ok: true }));
 
 // Slack 入力は Socket Mode のみ。旧 HTTP webhook 経路(routes/slack.ts)は
 // 署名検証が無く未使用だったため 2026-07 に削除した(必要なら git 履歴から復元)。
-if (config.SLACK_APP_TOKEN) {
+if (config.slack.appToken) {
   await startSlackSocketModeClient();
   app.log.info("Slack Socket Mode client started");
 } else {
@@ -37,6 +37,6 @@ reconcileSessionStatuses().catch((error) => {
 });
 
 await app.listen({
-  port: config.PORT,
+  port: config.server.port,
   host: "0.0.0.0"
 });

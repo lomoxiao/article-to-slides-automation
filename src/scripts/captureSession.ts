@@ -20,7 +20,7 @@ if (!domain) {
 }
 
 const sessionPath = resolveSessionPath(domain, {
-  playwrightSessions: { dir: config.WEB_SESSIONS_DIR }
+  playwrightSessions: { dir: config.web.sessionsDir }
 });
 
 console.log(`対象ドメイン: ${domain}`);

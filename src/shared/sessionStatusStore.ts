@@ -28,7 +28,7 @@ function domainKey(domain: string): string {
 }
 
 function sessionsDir(): string {
-  return config.WEB_SESSIONS_DIR;
+  return config.web.sessionsDir;
 }
 
 function sessionPathOf(domain: string): string {

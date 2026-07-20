@@ -22,7 +22,7 @@ type OAuthClientConfig = {
 };
 
 export async function getGoogleAuthClient() {
-  if (config.GOOGLE_AUTH_MODE === "oauth" && existsSync(config.GOOGLE_OAUTH_TOKEN)) {
+  if (config.google.authMode === "oauth" && existsSync(config.google.oauthToken)) {
     return getOAuthClientFromToken();
   }
 
@@ -58,19 +58,19 @@ export async function saveGoogleOAuthCode(code: string) {
   const { tokens } = await client.getToken(code.trim());
   client.setCredentials(tokens);
 
-  await writeFile(config.GOOGLE_OAUTH_TOKEN, JSON.stringify(tokens, null, 2), "utf8");
-  console.log(`Saved OAuth token to ${config.GOOGLE_OAUTH_TOKEN}`);
+  await writeFile(config.google.oauthToken, JSON.stringify(tokens, null, 2), "utf8");
+  console.log(`Saved OAuth token to ${config.google.oauthToken}`);
 }
 
 async function getOAuthClientFromToken() {
   const client = await createOAuthClient();
-  const token = JSON.parse(await readFile(config.GOOGLE_OAUTH_TOKEN, "utf8"));
+  const token = JSON.parse(await readFile(config.google.oauthToken, "utf8"));
   client.setCredentials(token);
   return client;
 }
 
 async function createOAuthClient() {
-  const credentials = JSON.parse(await readFile(config.GOOGLE_OAUTH_CREDENTIALS, "utf8")) as OAuthCredentials;
+  const credentials = JSON.parse(await readFile(config.google.oauthCredentials, "utf8")) as OAuthCredentials;
   const configBlock = credentials.installed ?? credentials.web;
 
   if (!configBlock) {

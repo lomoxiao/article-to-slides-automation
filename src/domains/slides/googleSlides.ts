@@ -10,7 +10,7 @@ export async function createGoogleSlidesDeck(outline: SlideOutline): Promise<Gen
   const slides = google.slides({ version: "v1", auth });
   const drive = google.drive({ version: "v3", auth });
 
-  const presentationId = config.GOOGLE_DRIVE_FOLDER_ID
+  const presentationId = config.google.driveFolderId
     ? await createPresentationInDriveFolder(drive, outline.title)
     : await createPresentationInDefaultDrive(slides, outline.title);
 
@@ -48,7 +48,7 @@ async function createPresentationInDriveFolder(
     requestBody: {
       name: title,
       mimeType: "application/vnd.google-apps.presentation",
-      parents: config.GOOGLE_DRIVE_FOLDER_ID ? [config.GOOGLE_DRIVE_FOLDER_ID] : undefined
+      parents: config.google.driveFolderId ? [config.google.driveFolderId] : undefined
     },
     fields: "id",
     supportsAllDrives: true

@@ -174,23 +174,23 @@ export async function runArticleToMangaJob(
     statusMessage: "Google Driveに生成素材を登録しています",
     log
   });
-  if (config.MANGA_DRIVE_FOLDER_ID) {
+  if (config.manga.driveFolderId) {
     try {
       log("Uploading step1/step2 to Google Drive (Google ドキュメント) ...");
       const doc1 = await upsertGoogleDoc({
-        folderId: config.MANGA_DRIVE_FOLDER_ID,
+        folderId: config.manga.driveFolderId,
         name: "step1-output.txt",
         filePath: result.step1OutputPath
       });
       const doc2 = await upsertGoogleDoc({
-        folderId: config.MANGA_DRIVE_FOLDER_ID,
+        folderId: config.manga.driveFolderId,
         name: "step2-output.txt",
         filePath: result.step2OutputPath
       });
       driveStep1Url = doc1.webViewLink;
       driveStep2Url = doc2.webViewLink;
       nextJob = await updateMangaJob(nextJob, {
-        driveFolderId: config.MANGA_DRIVE_FOLDER_ID,
+        driveFolderId: config.manga.driveFolderId,
         driveStep1Url,
         driveStep2Url
       });
@@ -229,7 +229,7 @@ export async function runArticleToMangaJob(
   //    Drive 同様に失敗を隔離し、生成・ジョブ本体は壊さない。
   let notebookLmStatus: NotebookLmSyncStatus | undefined;
   let notebookLmDetail: string | undefined;
-  if (config.MANGA_NOTEBOOKLM_AUTOSYNC) {
+  if (config.manga.notebookLmAutosync) {
     if (driveStep1Url && driveStep2Url) {
       await writeMangaViewerState({
         articleUrl: source.url,
@@ -239,8 +239,8 @@ export async function runArticleToMangaJob(
         statusMessage: "NotebookLMにソースを登録しています",
         log
       });
-      const engine = config.NOTEBOOKLM_NOTEBOOK_ID ? "playwright" : "claude --chrome";
-      log(`NotebookLM 同期 + Step3 トリガを実行中 (${engine} / ノートブック「${config.MANGA_NOTEBOOKLM_NAME}」) ...`);
+      const engine = config.notebookLm.notebookId ? "playwright" : "claude --chrome";
+      log(`NotebookLM 同期 + Step3 トリガを実行中 (${engine} / ノートブック「${config.manga.notebookLmName}」) ...`);
       const sync = await runNotebookLmSourceSync({ job: nextJob, logger: log });
       nextJob = sync.job;
       notebookLmStatus = sync.status;

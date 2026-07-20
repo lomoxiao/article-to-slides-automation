@@ -34,7 +34,7 @@ export async function notifySlackGasSlidesCompleted(input: {
   deckUrl: string;
   presentationId?: string | null;
 }) {
-  if (isSampleChannelId(config.SLACK_COMPLETION_CHANNEL_ID)) {
+  if (isSampleChannelId(config.slack.completionChannelId)) {
     console.warn("SLACK_COMPLETION_CHANNEL_ID is not configured; skipping completion notification.");
     return;
   }
@@ -145,11 +145,11 @@ export async function postSlackText(input: { channelId?: string; text: string })
 }
 
 async function postSlackMessage(input: { channelId?: string; text: string }) {
-  if (!config.SLACK_BOT_TOKEN) {
+  if (!config.slack.botToken) {
     return;
   }
 
-  const channels = [config.SLACK_COMPLETION_CHANNEL_ID, input.channelId].filter(
+  const channels = [config.slack.completionChannelId, input.channelId].filter(
     (channel, index, all): channel is string => Boolean(channel) && all.indexOf(channel) === index
   );
 
@@ -157,7 +157,7 @@ async function postSlackMessage(input: { channelId?: string; text: string }) {
     return;
   }
 
-  const client = new WebClient(config.SLACK_BOT_TOKEN);
+  const client = new WebClient(config.slack.botToken);
 
   for (const channel of channels) {
     try {

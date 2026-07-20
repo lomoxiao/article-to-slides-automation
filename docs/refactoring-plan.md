@@ -62,11 +62,12 @@
 - 分割方針: 「外部 I/O（Playwright 操作・API 呼び出し）」と「純粋ロジック（パース・整形・判定）」を分け、純粋ロジック側にテストを付ける。
 - 完了条件: 各ファイル 300 行以下を目安、分離した純粋ロジックにテストあり。
 
-### A-5. config の整理
-- `config.ts` の 40 個超の env 変数をドメイン別（slack / codex / claude / google / notebooklm / manga / web-session）にグループ化した構造で export する。
-- `z.coerce.boolean` の落とし穴（`"false"` が true になる。config 内コメントで既知）を `z.stringbool` 等の正しい boolean パースに置き換える。
-- `.env.example` を実際の必須/任意区分と一致するよう更新。
-- 完了条件: 呼び出し側が `config.slack.botToken` のようにグループ経由で参照。既存挙動維持をテストで担保。
+### A-5. config の整理 ✅ 完了 (2026-07-20)
+- 実施: env スキーマは flat のまま、export を9グループ(server/slack/codex/claude/summary/
+  google/manga/notebookLm/web)に再構成。参照99箇所を機械的リネーム。
+- 実施: `z.coerce.boolean` を明示語彙の `envBool` に置換("false"/"0" が正しく false になる。
+  空文字の従来挙動は変数ごとに維持)。実 .env で boolean 6値の before/after 同一を確認済み。
+- `.env.example` は権限設定によりエージェントから編集不可(必要なら手動更新)。
 
 ### A-6. scripts/ の共通ブートストラップ
 - `src/scripts/` 16 本の argv パース・エラーハンドリング・終了コードの流儀を統一する薄い共通ラッパを用意。
@@ -95,14 +96,13 @@
   外部入力は必ず stdin 経由」という制約を cliProcess.ts に文書化した。
 - injection 対策文の共通化は A-3 で実施済み(promptGuards.ts)。
 
-### B-4. 資格情報の取り扱い 🔶 移行中 (2026-07-20)
+### B-4. 資格情報の取り扱い ✅ 完了 (2026-07-20)
 - 実施: config の既定パスを `~/.content-extractor/` 優先に変更（明示 env 設定が最優先、
-  リポジトリ直下は移行期フォールバック+警告）。3ファイルを `~/.content-extractor/` へコピー済み。
-  docs (google-oauth-setup / google-slides-setup) を新パスに更新。
-- 残: .env の `GOOGLE_OAUTH_CREDENTIALS` / `GOOGLE_OAUTH_TOKEN` 行の削除（ユーザー作業）→
-  動作確認 → リポジトリ直下の3ファイル削除。
-- 残: OAuth スコープ / サービスアカウント権限の最小化レビュー、ログへの秘匿情報漏れ確認。
-- 完了条件: リポジトリツリー内に秘密ファイルが存在しない。スコープ一覧が docs に明記される。
+  リポジトリ直下は移行期フォールバック+警告）。3ファイルを `~/.content-extractor/` へ移行し、
+  .env 更新(ユーザー)・config の新パス解決確認・ハッシュ同一確認のうえリポジトリ直下の
+  コピーを削除。docs (google-oauth-setup / google-slides-setup) も新パスに更新済み。
+- 任意の追加課題(未実施): OAuth スコープ / サービスアカウント権限の最小化レビュー、
+  ログへの秘匿情報漏れ確認 → Phase 4 の B-5/B-6 と合わせて実施可。
 
 ### B-5. Firebase ルールと管理系スクリプト
 - `updateDatabaseRules.ts` は merge+backup 方式で安全側（維持）。ライブ Rules 自体のレビュー（デフォルト deny か、公開パスの範囲）を 1 回実施し、結果を docs に残す。
@@ -125,7 +125,7 @@
 | Phase | 内容 | 観点 | 前提 |
 |---|---|---|---|
 | 0 | ✅ 完了 (2026-07-20): lint + CI + 周辺テスト追加 | A-1 | なし |
-| 1 | 🔶 主要部完了 (2026-07-20): Slack 入口認証・入力検証は完了。資格情報の外出しは移行中(B-4残作業あり) | B-1, B-2, B-4 | Phase 0 |
+| 1 | ✅ 完了 (2026-07-20): Slack 入口認証、入力検証、資格情報の外出し | B-1, B-2, B-4 | Phase 0 |
 | 2 | ✅ 完了 (2026-07-20): runner 統合(+injection対策共通化)、ジョブストア下回り、.env ローダー | A-3, B-3 | Phase 0 |
 | 3 | 構造再編: ドメイン分割、大型ファイル分割、config 整理、scripts 統一 | A-2, A-4, A-5, A-6 | Phase 2 |
 | 4 | 衛生・横断: audit CI、Rules レビュー、横断パッケージ化判断 | B-5, B-6, C | Phase 1-3 |

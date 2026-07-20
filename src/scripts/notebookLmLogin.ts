@@ -10,10 +10,10 @@ import { recordSessionCaptured } from "../shared/sessionStatusStore.js";
 // ログイン状態はプロファイルディレクトリ(NOTEBOOKLM_PROFILE_DIR)に永続化される。
 // 失効した場合も同じコマンドで再ログインできる。
 
-console.log(`プロファイル: ${config.NOTEBOOKLM_PROFILE_DIR}`);
+console.log(`プロファイル: ${config.notebookLm.profileDir}`);
 console.log("ブラウザが開きます。Google アカウントにログインし、NotebookLM が表示されることを確認してください。");
 
-const context = await chromium.launchPersistentContext(config.NOTEBOOKLM_PROFILE_DIR, {
+const context = await chromium.launchPersistentContext(config.notebookLm.profileDir, {
   channel: "chrome",
   headless: false,
   viewport: { width: 1440, height: 900 },
@@ -22,8 +22,8 @@ const context = await chromium.launchPersistentContext(config.NOTEBOOKLM_PROFILE
 });
 
 const page = context.pages()[0] ?? (await context.newPage());
-const target = config.NOTEBOOKLM_NOTEBOOK_ID
-  ? notebookUrl(config.NOTEBOOKLM_NOTEBOOK_ID)
+const target = config.notebookLm.notebookId
+  ? notebookUrl(config.notebookLm.notebookId)
   : "https://notebooklm.google.com/";
 await page.goto(target, { waitUntil: "domcontentloaded", timeout: 60_000 }).catch((error) => {
   console.warn(`ページを開けませんでした(手動でURLを入力してください): ${error.message}`);

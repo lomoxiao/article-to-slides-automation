@@ -19,7 +19,7 @@ export type MangaDeckFetchResult = {
 type FetchMangaDeckInput = {
   /** ログ・stdout の保存先(ジョブフォルダ)。 */
   jobDir: string;
-  /** 操作対象ノートブック名。未指定なら config.MANGA_NOTEBOOKLM_NAME。 */
+  /** 操作対象ノートブック名。未指定なら config.manga.notebookLmName。 */
   notebookName?: string;
   logger?: (message: string) => void;
 };
@@ -47,7 +47,7 @@ const LEGACY_FAIL_MARKER = "NBLM_DECK_FAILED";
  */
 export async function fetchMangaDeckUrl(input: FetchMangaDeckInput): Promise<MangaDeckFetchResult> {
   const log = input.logger ?? (() => {});
-  const notebookName = input.notebookName ?? config.MANGA_NOTEBOOKLM_NAME;
+  const notebookName = input.notebookName ?? config.manga.notebookLmName;
   const sessionId = randomUUID();
 
   const args = [
@@ -58,9 +58,9 @@ export async function fetchMangaDeckUrl(input: FetchMangaDeckInput): Promise<Man
     "--permission-mode",
     "bypassPermissions",
     "--model",
-    config.CLAUDE_MODEL,
+    config.claude.model,
     "--max-turns",
-    String(config.MANGA_DECK_FETCH_MAX_TURNS),
+    String(config.manga.deckFetchMaxTurns),
     "--session-id",
     sessionId,
     "--disallowedTools",
@@ -74,7 +74,7 @@ export async function fetchMangaDeckUrl(input: FetchMangaDeckInput): Promise<Man
   await writeFile(inputPath, prompt, "utf8");
 
   try {
-    const { exitCode, stdout, stderr } = await spawnClaude(args, prompt, config.MANGA_DECK_FETCH_TIMEOUT_MS);
+    const { exitCode, stdout, stderr } = await spawnClaude(args, prompt, config.manga.deckFetchTimeoutMs);
     await writeFile(stdoutPath, stdout, "utf8");
     await writeFile(stderrPath, stderr, "utf8");
 

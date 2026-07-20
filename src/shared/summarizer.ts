@@ -17,7 +17,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const templatePath = resolve(__dirname, "../../templates/auto-slides-template.md");
 
 export async function summarizeForSlides(input: SummarizeInput | SourceContent): Promise<SlideOutline> {
-  if (config.SUMMARY_PROVIDER === "api") {
+  if (config.summary.provider === "api") {
     throw new Error("Metered API summarization is not configured. Use codex_job or add an explicit API provider.");
   }
 
