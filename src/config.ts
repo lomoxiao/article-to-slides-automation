@@ -53,6 +53,13 @@ const envSchema = z.object({
   // manga アウトライン(step1/step2)の Drive アップロード先フォルダ。
   // 未設定ならアップロードはスキップ。Google ドキュメントに変換して固定名で upsert する。
   MANGA_DRIVE_FOLDER_ID: z.string().optional(),
+  VIDEO_GENERATION_ENABLED: envBool(false),
+  VIDEO_DRIVE_FOLDER_ID: z.string().optional(),
+  VIDEO_TTS_PYTHON: z.string().default(".venv-video/Scripts/python.exe"),
+  VIDEO_TTS_VOICE: z.string().default("jf_alpha"),
+  VIDEO_TTS_SPEED: z.coerce.number().positive().default(1.0),
+  VIDEO_JOB_TIMEOUT_MS: z.coerce.number().int().positive().default(2_700_000),
+  VIDEO_MAX_FILE_BYTES: z.coerce.number().int().positive().default(500_000_000),
   // Phase3: NotebookLM 自動操作(claude --chrome)。Drive アップロード成功後に
   // 固定ノートブックの step1/step2 ソースを Drive 同期し、チャットで Step3 をトリガする。
   // 既定 false(安全側)。有効化するにはホストで Chrome 起動 + Claude in Chrome 拡張接続 +
@@ -172,6 +179,15 @@ export const config = {
     deckMaxRetries: env.MANGA_DECK_MAX_RETRIES,
     deckFetchMaxTurns: env.MANGA_DECK_FETCH_MAX_TURNS,
     deckFetchTimeoutMs: env.MANGA_DECK_FETCH_TIMEOUT_MS
+  },
+  video: {
+    enabled: env.VIDEO_GENERATION_ENABLED,
+    driveFolderId: env.VIDEO_DRIVE_FOLDER_ID,
+    ttsPython: env.VIDEO_TTS_PYTHON,
+    ttsVoice: env.VIDEO_TTS_VOICE,
+    ttsSpeed: env.VIDEO_TTS_SPEED,
+    jobTimeoutMs: env.VIDEO_JOB_TIMEOUT_MS,
+    maxFileBytes: env.VIDEO_MAX_FILE_BYTES
   },
   notebookLm: {
     profileDir: env.NOTEBOOKLM_PROFILE_DIR,

@@ -5,6 +5,7 @@ import { registerArticle, upsertArticleSource } from "../../shared/firebaseArtic
 import { runUrlToGasSlidesWorkflow } from "../../workflows/urlToGasSlides.js";
 import { processSlideJob } from "./slideJobProcessor.js";
 import { enqueueMangaGeneration } from "../manga/mangaGenerationQueue.js";
+import { enqueueVideoGeneration } from "../video/videoGenerationQueue.js";
 import { DEFAULT_MANGA_PAGES } from "../../utils/parseMangaSlackArgs.js";
 import type { MangaTreatment } from "../../types/manga.js";
 
@@ -13,13 +14,14 @@ const MAX_PROCESSED_IDS = 500;
 
 // viewerがRules(create-only, ownerUid=auth.uid, status=queued)の下で書く形。
 // admin側は防御的に再検証する(Rulesを信用しつつ、path追加やRules事故に備える)。
-const generationRequestSchema = z.object({
+export const generationRequestSchema = z.object({
   ownerUid: z.string().min(1),
   kind: z.literal("text"),
   title: z.string().max(200).optional(),
   text: z.string().min(1).max(100_000),
-  slides: z.literal(true),
-  manga: z.boolean().optional(),
+  slides: z.boolean().optional().default(false),
+  manga: z.boolean().optional().default(false),
+  video: z.boolean().optional().default(false),
   audience: z.string().max(500).optional(),
   focus: z.string().max(500).optional(),
   mangaOptions: z
@@ -32,6 +34,13 @@ const generationRequestSchema = z.object({
   status: z.string(),
   createdAt: z.string().max(64),
   trigger: z.object({ provider: z.literal("web") })
+}).superRefine((request, ctx) => {
+  if (!request.slides && !request.manga && !request.video) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "At least one of slides, manga, or video must be true" });
+  }
+  if (request.manga !== Boolean(request.mangaOptions)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["mangaOptions"], message: "mangaOptions must be present exactly when manga is true" });
+  }
 });
 
 type GenerationRequest = z.infer<typeof generationRequestSchema>;
@@ -126,21 +135,18 @@ async function handleRequest(requestId: string, logger: Pick<Console, "log" | "w
     });
     await upsertArticleSource(identity.canonicalUrl, request.text);
 
-    logger.log(`[generation-request] ${requestId}: slides job for ${identity.articleId}`);
-    const job = await runUrlToGasSlidesWorkflow({
-      url: identity.canonicalUrl,
-      sourceText: request.text,
-      sourceTitle: title,
-      audience: request.audience,
-      focus: request.focus
-    });
-    const result = await processSlideJob(job.id);
-    if (!result.ok) {
-      throw new Error("AUTO_RUN_CODEX is disabled; slideData.json was not generated automatically.");
+    if (request.video) {
+      await enqueueVideoGeneration({
+        url: identity.canonicalUrl,
+        sourceText: request.text,
+        sourceTitle: title,
+        audience: request.audience,
+        focus: request.focus,
+        requestedBy: `viewer:${request.ownerUid}`
+      });
     }
 
     if (request.manga && request.mangaOptions) {
-      // マンガは既存の直列キューへ委譲(完了を待たない)。requestのstatusはスライドの結果を表す
       enqueueMangaGeneration({
         url: identity.canonicalUrl,
         sourceText: request.text,
@@ -153,6 +159,21 @@ async function handleRequest(requestId: string, logger: Pick<Console, "log" | "w
         focus: request.focus,
         requestedBy: `viewer:${request.ownerUid}`
       });
+    }
+
+    if (request.slides) {
+      logger.log(`[generation-request] ${requestId}: slides job for ${identity.articleId}`);
+      const job = await runUrlToGasSlidesWorkflow({
+        url: identity.canonicalUrl,
+        sourceText: request.text,
+        sourceTitle: title,
+        audience: request.audience,
+        focus: request.focus
+      });
+      const result = await processSlideJob(job.id);
+      if (!result.ok) {
+        throw new Error("AUTO_RUN_CODEX is disabled; slideData.json was not generated automatically.");
+      }
     }
 
     await requestRef.update({ status: "done", articleId: identity.articleId });

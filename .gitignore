@@ -1,8 +1,12 @@
 node_modules/
+.venv-video/
+.local-tools/
 dist/
 .env
 .env.bk
 *.log
+__pycache__/
+*.pyc
 google-service-account.json
 google-oauth-credentials.json
 google-oauth-token.json

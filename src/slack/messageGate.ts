@@ -3,6 +3,7 @@
 
 export const SLIDE_GENERATE_PREFIX = "[slide-generate]";
 export const MANGA_GENERATE_PREFIX = "[manga-generate]";
+export const VIDEO_GENERATE_PREFIX = "[video-generate]";
 
 export type SlackMessageEvent = {
   type?: string;

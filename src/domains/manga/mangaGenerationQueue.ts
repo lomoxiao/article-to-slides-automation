@@ -3,6 +3,7 @@ import { runNotebookLmDeckRetrieval } from "../notebooklm/notebookLmPipeline.js"
 import { notifyMangaCompleted, notifyMangaFailed } from "../../shared/slackNotifier.js";
 import { clearArtifactDiagnostic, upsertMangaArtifact } from "../../shared/firebaseArticleStore.js";
 import type { MangaTreatment } from "../../types/manga.js";
+import { resourceIntensiveSemaphore } from "../../shared/resourceSemaphore.js";
 
 export type EnqueueMangaGenerationInput = {
   url: string;
@@ -53,7 +54,7 @@ async function writeQueuedViewerState(input: EnqueueMangaGenerationInput): Promi
 
 async function runMangaJob(input: EnqueueMangaGenerationInput): Promise<void> {
   try {
-    const result = await runArticleToMangaJob({
+    const result = await resourceIntensiveSemaphore.runExclusive(() => runArticleToMangaJob({
       url: input.url,
       sourceText: input.sourceText,
       sourceTitle: input.sourceTitle,
@@ -65,7 +66,7 @@ async function runMangaJob(input: EnqueueMangaGenerationInput): Promise<void> {
       focus: input.focus,
       requestedBy: input.requestedBy,
       logger: (message) => console.log(`[manga-generate] ${message}`)
-    });
+    }));
 
     await notifyMangaCompleted({
       channelId: input.sourceChannelId,

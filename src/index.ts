@@ -3,6 +3,7 @@ import { config } from "./config.js";
 import { startSlackSocketModeClient } from "./slack/socketModeClient.js";
 import { startGenerationRequestWatcher } from "./domains/slides/generationRequestWatcher.js";
 import { reconcileSessionStatuses } from "./shared/sessionStatusStore.js";
+import { recoverVideoJobs } from "./domains/video/videoGenerationQueue.js";
 
 const app = Fastify({
   logger: true
@@ -29,6 +30,12 @@ try {
     }`
   );
 }
+
+recoverVideoJobs().then((count) => {
+  if (count > 0) app.log.info(`Recovered ${count} video job(s)`);
+}).catch((error) => {
+  app.log.warn(`Video job recovery skipped: ${error instanceof Error ? error.message : String(error)}`);
+});
 
 reconcileSessionStatuses().catch((error) => {
   app.log.warn(

@@ -140,6 +140,31 @@ export async function notifyMangaDeckFailed(input: {
   });
 }
 
+export async function notifyVideoCompleted(input: {
+  channelId?: string;
+  requestedBy?: string;
+  jobId: string;
+  videoUrl: string;
+}) {
+  await postSlackMessage({
+    channelId: input.channelId,
+    text: `${mention(input.requestedBy)}60秒解説動画の生成が完了しました。\nJob ID: ${input.jobId}\n${input.videoUrl}`
+  });
+}
+
+export async function notifyVideoFailed(input: {
+  channelId?: string;
+  requestedBy?: string;
+  jobId: string;
+  code: string;
+  error: string;
+}) {
+  await postSlackMessage({
+    channelId: input.channelId,
+    text: `${mention(input.requestedBy)}60秒解説動画の生成を完了できませんでした。\nJob ID: ${input.jobId}\nCode: ${input.code}\n${input.error}`
+  });
+}
+
 export async function postSlackText(input: { channelId?: string; text: string }) {
   await postSlackMessage(input);
 }

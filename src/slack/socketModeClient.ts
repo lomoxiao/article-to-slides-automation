@@ -5,9 +5,12 @@ import { processSlideJob } from "../domains/slides/slideJobProcessor.js";
 import { runUrlToGasSlidesWorkflow } from "../workflows/urlToGasSlides.js";
 import { parseSlideArgs } from "../utils/parseSlideArgs.js";
 import { parseMangaSlackArgs } from "../utils/parseMangaSlackArgs.js";
+import { parseVideoSlackArgs } from "../utils/parseVideoSlackArgs.js";
+import { enqueueVideoGeneration } from "../domains/video/videoGenerationQueue.js";
 import { enqueueMangaGeneration } from "../domains/manga/mangaGenerationQueue.js";
 import {
   MANGA_GENERATE_PREFIX,
+  VIDEO_GENERATE_PREFIX,
   SLIDE_GENERATE_PREFIX,
   describeSlackMessageEvent,
   getErrorCode,
@@ -19,9 +22,11 @@ import {
 } from "./messageGate.js";
 import { RecentRequestIds } from "./recentRequestIds.js";
 
+const VIDEO_ACCEPTED_TEXT = "動画生成リクエストを受け付けました。完了後にViewerで再生できます。";
 const MANGA_ACCEPTED_TEXT = "漫画生成リクエストを受け付けました。完了後に通知します（生成に数分かかります）。";
 const processedSlideRequestIds = new RecentRequestIds();
 const processedMangaRequestIds = new RecentRequestIds();
+const processedVideoRequestIds = new RecentRequestIds();
 
 type SlashCommandPayload = {
   text?: string;
@@ -125,6 +130,11 @@ export async function startSlackSocketModeClient() {
         return;
       }
 
+      if (isGenerateMessage(messageEvent, VIDEO_GENERATE_PREFIX, config.slack.completionChannelId)) {
+        await handleVideoGenerateMessage(messageEvent);
+        return;
+      }
+
       if (isGenerateMessage(messageEvent, MANGA_GENERATE_PREFIX, config.slack.completionChannelId)) {
         await handleMangaGenerateMessage(messageEvent);
         return;
@@ -206,6 +216,29 @@ async function safeAck(ack: SlackAck, eventDescription: string): Promise<boolean
     const code = getErrorCode(error);
     console.warn(`Slack ack failed (${eventDescription}) code=${code}: ${message}`);
     return false;
+  }
+}
+
+async function handleVideoGenerateMessage(event: SlackMessageEvent): Promise<void> {
+  const requestId = getRequestId(event);
+  if (processedVideoRequestIds.has(requestId)) return;
+  processedVideoRequestIds.remember(requestId);
+  const parsed = parseVideoSlackArgs(stripPrefix(event.text ?? "", VIDEO_GENERATE_PREFIX));
+  if (!parsed.ok) {
+    await postSlackText({ channelId: event.channel, text: parsed.errorMessage });
+    return;
+  }
+  try {
+    await enqueueVideoGeneration({
+      url: parsed.url,
+      audience: parsed.audience,
+      focus: parsed.focus,
+      requestedBy: event.user,
+      sourceChannelId: event.channel
+    });
+    await postSlackText({ channelId: event.channel, text: VIDEO_ACCEPTED_TEXT });
+  } catch (error) {
+    await postSlackText({ channelId: event.channel, text: `動画生成を受け付けられませんでした: ${error instanceof Error ? error.message : String(error)}` });
   }
 }
 

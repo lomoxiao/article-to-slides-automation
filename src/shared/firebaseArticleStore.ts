@@ -104,7 +104,14 @@ export type ArtifactStage =
   | "source_registration"
   | "deck_generation"
   | "url_retrieval"
-  | "slides_generation";
+  | "slides_generation"
+  | "video_queued"
+  | "video_planning"
+  | "video_tts"
+  | "video_captioning"
+  | "video_transcribing"
+  | "video_rendering"
+  | "video_uploading";
 
 export type UpsertSlideArtifactInput = {
   originalUrl?: string;
@@ -282,6 +289,54 @@ export async function upsertMangaArtifact(input: UpsertMangaArtifactInput): Prom
   };
 }
 
+
+export type UpsertVideoArtifactInput = {
+  articleUrl: string;
+  videoUrl: string;
+  fileId?: string;
+  status: ViewerArticleStatus;
+  stage?: ArtifactStage;
+  statusMessage?: string;
+  title?: string;
+  headline?: string;
+  durationSec?: number;
+  sizeBytes?: number;
+};
+
+export async function upsertVideoArtifact(input: UpsertVideoArtifactInput): Promise<{ articleId: string; isNew: boolean }> {
+  const identity = createArticleIdentity(input.articleUrl);
+  const ref = getDb().ref(`/articles/${identity.articleId}`);
+  const snapshot = await ref.get();
+  const existing = snapshot.exists() ? snapshot.val() as {
+    originalUrl?: string; title?: string; source?: { headline?: string }; video?: ExistingArtifact & { fileId?: string };
+  } : undefined;
+  const updatedAt = nowJstIso();
+  const video = shouldPreserveManualArtifact(existing?.video)
+    ? existing?.video
+    : {
+        status: input.status,
+        ...(input.stage ? { stage: input.stage } : {}),
+        ...(input.statusMessage ? { statusMessage: input.statusMessage } : {}),
+        url: input.videoUrl || existing?.video?.url || "",
+        fileId: input.fileId || existing?.video?.fileId || "",
+        origin: "automation",
+        locked: false,
+        ...(input.durationSec !== undefined ? { durationSec: input.durationSec } : {}),
+        ...(input.sizeBytes !== undefined ? { sizeBytes: input.sizeBytes } : {}),
+        updatedAt
+      };
+  await ref.update({
+    articleId: identity.articleId,
+    canonicalUrl: identity.canonicalUrl,
+    originalUrl: existing?.originalUrl || input.articleUrl,
+    title: chooseText(input.title, existing?.title, getUrlHost(identity.canonicalUrl) || identity.canonicalUrl),
+    source: { kind: identity.sourceKind, headline: chooseText(input.headline, existing?.source?.headline, "") },
+    video,
+    updatedAt
+  });
+  return { articleId: identity.articleId, isNew: !existing };
+}
+
 export function shouldPreserveManualArtifact(artifact: ExistingArtifact | undefined): boolean {
   return artifact?.status === "completed" && artifact.origin === "manual" && artifact.locked === true;
 }
@@ -315,12 +370,14 @@ export async function upsertArticleTldr(articleUrl: string, tldr: string): Promi
 
 export type ArtifactDiagnosticInput = {
   articleUrl: string;
-  artifactType: "slides" | "manga";
+  artifactType: "slides" | "manga" | "video";
   status: ViewerArticleStatus;
   stage: ArtifactStage;
   code: string;
   detail: string;
   jobId?: string;
+  projectArchiveFileId?: string;
+  manifestFileId?: string;
 };
 
 /** Store operational details outside /articles so ordinary viewers cannot read them. */
@@ -332,11 +389,13 @@ export async function upsertArtifactDiagnostic(input: ArtifactDiagnosticInput): 
     code: input.code,
     detail: input.detail,
     ...(input.jobId ? { jobId: input.jobId } : {}),
+    ...(input.projectArchiveFileId ? { projectArchiveFileId: input.projectArchiveFileId } : {}),
+    ...(input.manifestFileId ? { manifestFileId: input.manifestFileId } : {}),
     updatedAt: nowJstIso()
   });
 }
 
-export async function clearArtifactDiagnostic(articleUrl: string, artifactType: "slides" | "manga"): Promise<void> {
+export async function clearArtifactDiagnostic(articleUrl: string, artifactType: "slides" | "manga" | "video"): Promise<void> {
   const identity = createArticleIdentity(articleUrl);
   await getDb().ref(`/artifactDiagnostics/${identity.articleId}/${artifactType}`).remove();
 }

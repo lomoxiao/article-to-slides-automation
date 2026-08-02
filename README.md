@@ -164,3 +164,9 @@ SLACK_COMPLETION_CHANNEL_ID=C000000000
 Firebaseの`slides`と`manga`は共通の`pending | processing | action_required | failed | completed`を使用します。`stage`で現在または失敗した工程を表し、一般viewer向けの説明は`statusMessage`へ保存します。
 
 漫画はDrive登録、NotebookLMソース登録、デック生成、URL取得を個別に記録します。デック生成またはURL取得で自動処理を継続できない場合は、手動操作で復旧できる`action_required`になります。技術的なエラーは記事データへ混在させず、editor専用の`/artifactDiagnostics/{articleId}/{artifactType}`へ保存します。
+
+## 60秒解説動画（段階導入）
+
+記事から55〜65秒・1080pのMP4をローカル生成し、Google Driveへ保存する機能はfeature flagで無効化されています。初期セットアップ、実CLI契約、未完了のPhase 0受入項目は [docs/video-spike.md](docs/video-spike.md) を参照してください。
+
+TTSは公式Kokoro＋Misaki日本語G2P＋完全版UniDicへ一本化しています。初回は `powershell -ExecutionPolicy Bypass -File scripts/setup-video-tts.ps1`、`npm run video:browser:ensure` の順で実行してください。日本語音声付き固定テンプレートの再生成は `npm run video:template:smoke`、TTSと意味単位字幕の受入スモークは `npm run video:preflight:smoke`、通常診断は `npm run video:preflight`、単体生成は `npm run video:generate -- --url <URL>` です。本番判定は [docs/video-production-readiness.md](docs/video-production-readiness.md) を参照し、Rulesデプロイと実アカウントE2Eが終わるまで `VIDEO_GENERATION_ENABLED=false` を維持してください。
