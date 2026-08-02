@@ -29,6 +29,9 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "firebase:verify": "node scripts/verify-firebase-admin.mjs",
+    "playwright:setup": "node scripts/setup-workspace-playwright.mjs",
+    "playwright:install": "playwright install chromium",
+    "playwright:verify": "tsx src/scripts/verifyPlaywrightRuntime.ts",
     "video:browser:ensure": "tsx src/scripts/videoPreflight.ts --ensure-browser",
     "video:preflight:smoke": "tsx src/scripts/videoPreflight.ts --smoke"
   },
@@ -42,7 +45,7 @@
     "googleapis": "^148.0.0",
     "gsap": "3.14.2",
     "hyperframes": "0.7.87",
-    "playwright": "^1.59.1",
+    "playwright": "1.62.1",
     "sharp": "^0.34.0",
     "zod": "^3.25.67"
   },

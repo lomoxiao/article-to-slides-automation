@@ -4,12 +4,21 @@ import { startSlackSocketModeClient } from "./slack/socketModeClient.js";
 import { startGenerationRequestWatcher } from "./domains/slides/generationRequestWatcher.js";
 import { reconcileSessionStatuses } from "./shared/sessionStatusStore.js";
 import { markInterruptedVideoJobs } from "./domains/video/videoGenerationQueue.js";
+import { refreshSlidesRuntimeReadiness } from "./domains/slides/playwrightPreflight.js";
 
 const app = Fastify({
   logger: true
 });
 
 app.get("/health", async () => ({ ok: true }));
+
+const slidesRuntime = await refreshSlidesRuntimeReadiness();
+if (slidesRuntime.status === "available") {
+  app.log.info("Playwright Chromium preflight passed");
+} else {
+  app.log.warn(`Playwright Chromium preflight failed; slides requests will be rejected safely: ${slidesRuntime.detail}`);
+}
+
 try {
   const result = await markInterruptedVideoJobs();
   if (result.total > 0) app.log.info(

@@ -19,6 +19,7 @@ Node.js から OpenAI API などの従量課金 LLM API は呼びません。Sla
 
 ```powershell
 npm.cmd install
+npm.cmd run playwright:setup
 Copy-Item .env.example .env
 npm.cmd run typecheck
 ```

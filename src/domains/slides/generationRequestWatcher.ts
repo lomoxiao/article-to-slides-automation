@@ -8,6 +8,7 @@ import { enqueueMangaGeneration } from "../manga/mangaGenerationQueue.js";
 import { enqueueVideoGeneration } from "../video/videoGenerationQueue.js";
 import { DEFAULT_MANGA_PAGES } from "../../utils/parseMangaSlackArgs.js";
 import type { MangaTreatment } from "../../types/manga.js";
+import { ensureSlidesRuntimeReady, isSlidesRuntimeUnavailableError, PLAYWRIGHT_PUBLIC_STATUS_MESSAGE } from "./playwrightPreflight.js";
 
 const REQUESTS_PATH = "/generationRequests";
 const MAX_PROCESSED_IDS = 500;
@@ -162,6 +163,7 @@ async function handleRequest(requestId: string, logger: Pick<Console, "log" | "w
     }
 
     if (request.slides) {
+      await ensureSlidesRuntimeReady();
       logger.log(`[generation-request] ${requestId}: slides job for ${identity.articleId}`);
       const job = await runUrlToGasSlidesWorkflow({
         url: identity.canonicalUrl,
@@ -181,12 +183,26 @@ async function handleRequest(requestId: string, logger: Pick<Console, "log" | "w
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`[generation-request] ${requestId}: failed: ${message}`);
+    const failure = generationRequestFailure(error);
     await requestRef
-      .update({ status: "failed", error: message.slice(0, 500) })
+      .update(failure)
       .catch(() => {});
   }
 }
 
+
+export function generationRequestFailure(error: unknown): Record<string, string> {
+  if (isSlidesRuntimeUnavailableError(error)) {
+    return {
+      status: "failed",
+      errorCode: "PLAYWRIGHT_CHROMIUM_UNAVAILABLE",
+      statusMessage: PLAYWRIGHT_PUBLIC_STATUS_MESSAGE,
+      error: "Playwright Chromium unavailable"
+    };
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return { status: "failed", error: message.slice(0, 500) };
+}
 function rememberProcessedId(requestId: string): void {
   processedRequestIds.add(requestId);
   if (processedRequestIds.size > MAX_PROCESSED_IDS) {

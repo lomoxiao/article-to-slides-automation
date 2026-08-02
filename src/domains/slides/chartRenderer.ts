@@ -2,6 +2,7 @@ import { chromium, type Browser } from "playwright";
 import { convertJsonToSvgBatchViaGas } from "./gasSlides.js";
 import { collectChartTargets } from "./chartData.js";
 import { clampSvgSize, createSvgRenderHtml, parseSvgSize } from "./chartSvg.js";
+import { SlidesRuntimeUnavailableError, isPlaywrightChromiumUnavailable } from "./playwrightPreflight.js";
 
 // チャート描画の I/O オーケストレーション(GAS で JSON→SVG、Playwright で SVG→PNG)。
 // 対象抽出・スキーマ検証は chartData.ts、SVG サイズ解決は chartSvg.ts(いずれも純粋ロジック)。
@@ -73,8 +74,8 @@ export async function renderChartImagesInSlideData(slideData: unknown[]): Promis
       }
     }
   } catch (error) {
-    if (isPlaywrightChromiumInstallError(error)) {
-      throw new Error("Playwright Chromium is not installed. Run: npx playwright install chromium", { cause: error });
+    if (isPlaywrightChromiumUnavailable(error)) {
+      throw new SlidesRuntimeUnavailableError(error instanceof Error ? error.message : String(error), { cause: error });
     }
 
     throw error;
@@ -168,16 +169,4 @@ async function renderSvgToPngDataUrl(browser: Browser, svg: string): Promise<str
 
 function structuredCloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function isPlaywrightChromiumInstallError(error: unknown) {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  return (
-    error.message.includes("Executable doesn't exist") ||
-    error.message.includes("playwright install") ||
-    error.message.includes("browserType.launch")
-  );
 }
