@@ -3,7 +3,7 @@ import { clearArtifactDiagnostic, upsertArtifactDiagnostic, upsertVideoArtifact 
 import { resourceIntensiveSemaphore } from "../../shared/resourceSemaphore.js";
 import { notifyVideoCompleted, notifyVideoFailed } from "../../shared/slackNotifier.js";
 import { generateVideoLocally, uploadVideoOutputs, VideoActionRequiredError } from "./videoPipeline.js";
-import { createVideoJob, listRecoverableVideoJobs, updateVideoJob, type CreateVideoJobInput } from "./videoJobStore.js";
+import { createVideoJob, isManagedVideoJob, listInterruptedVideoJobs, updateVideoJob, type CreateVideoJobInput } from "./videoJobStore.js";
 import type { VideoJob } from "./types.js";
 import { assertVideoRuntimeReady } from "./preflightState.js";
 
@@ -13,22 +13,53 @@ const enqueued = new Set<string>();
 export async function enqueueVideoGeneration(input: CreateVideoJobInput): Promise<VideoJob> {
   if (!config.video.enabled) throw new Error("VIDEO_GENERATION_DISABLED");
   await assertVideoRuntimeReady();
-  const job = await createVideoJob(input);
+  const job = await createVideoJob({ ...input, executionMode: "managed" });
   await writeVideoState(job, "pending", "video_queued", "動画生成の開始を待っています");
   enqueueExisting(job);
   return job;
 }
 
-export async function recoverVideoJobs(): Promise<number> {
-  if (!config.video.enabled) return 0;
-  await assertVideoRuntimeReady();
-  const jobs = await listRecoverableVideoJobs();
+type InterruptedJobDependencies = {
+  listJobs?: typeof listInterruptedVideoJobs;
+  updateJob?: typeof updateVideoJob;
+  writeState?: typeof writeVideoState;
+};
+
+export async function markInterruptedVideoJobs(
+  dependencies: InterruptedJobDependencies = {}
+): Promise<{ total: number; managed: number; cli: number; failed: number }> {
+  const listJobs = dependencies.listJobs ?? listInterruptedVideoJobs;
+  const updateJob = dependencies.updateJob ?? updateVideoJob;
+  const persistState = dependencies.writeState ?? writeVideoState;
+  const jobs = await listJobs();
+  let managed = 0;
+  let cli = 0;
+  let failed = 0;
   for (const job of jobs) {
-    const pending = await updateVideoJob(job, { status: "pending", stage: "video_queued" });
-    await writeVideoState(pending, "pending", "video_queued", "中断した動画ジョブの再開を待っています");
-    enqueueExisting(pending);
+    const managedJob = isManagedVideoJob(job);
+    if (managedJob) managed += 1;
+    else cli += 1;
+    try {
+      if (managedJob) {
+        await persistState(
+          job,
+          "action_required",
+          job.stage,
+          "Worker再起動により中断されました。再生成してください",
+          { code: "WORKER_RESTARTED", detail: "The interrupted job was not resumed or uploaded" }
+        );
+      }
+      await updateJob(job, {
+        status: "action_required",
+        errorCode: "WORKER_RESTARTED",
+        error: "Worker restarted before video generation completed"
+      });
+    } catch (error) {
+      failed += 1;
+      console.error(`[video-generate] interrupted job finalization failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
-  return jobs.length;
+  return { total: jobs.length, managed, cli, failed };
 }
 
 function enqueueExisting(job: VideoJob): void {

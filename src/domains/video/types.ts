@@ -58,6 +58,7 @@ export type CaptionCue = z.infer<typeof captionCueSchema>;
 export type VideoStatus = "pending" | "processing" | "action_required" | "completed" | "failed";
 export type VideoStage = "video_queued" | "video_planning" | "video_tts" | "video_captioning" | "video_transcribing" | "video_rendering" | "video_uploading";
 export type VideoArtifactKind = "mp4" | "projectArchive" | "manifest";
+export type VideoExecutionMode = "managed" | "cli";
 
 export type VideoJob = {
   id: string;
@@ -68,6 +69,7 @@ export type VideoJob = {
   focus?: string;
   requestedBy?: string;
   sourceChannelId?: string;
+  executionMode?: VideoExecutionMode;
   inputHash: string;
   status: VideoStatus;
   stage: VideoStage;

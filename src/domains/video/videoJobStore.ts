@@ -12,7 +12,7 @@ const schema = z.object({
   createdAt: z.string(), updatedAt: z.string(), jobDir: z.string()
 }).passthrough();
 
-export type CreateVideoJobInput = Pick<VideoJob, "url" | "sourceText" | "sourceTitle" | "audience" | "focus" | "requestedBy" | "sourceChannelId">;
+export type CreateVideoJobInput = Pick<VideoJob, "url" | "sourceText" | "sourceTitle" | "audience" | "focus" | "requestedBy" | "sourceChannelId" | "executionMode">;
 
 export async function createVideoJob(input: CreateVideoJobInput): Promise<VideoJob> {
   const now = new Date();
@@ -51,11 +51,20 @@ export async function updateVideoJob(job: VideoJob, patch: Partial<VideoJob>): P
   return next;
 }
 
-export async function listRecoverableVideoJobs(): Promise<VideoJob[]> {
+export async function listVideoJobs(): Promise<VideoJob[]> {
   let entries: string[];
   try { entries = await readdir(jobsRoot); } catch { return []; }
   const jobs = await Promise.all(entries.map((id) => readVideoJob(id).catch(() => undefined)));
-  return jobs.filter((job): job is VideoJob => Boolean(job && (job.status === "pending" || job.status === "processing")));
+  return jobs.filter((job): job is VideoJob => Boolean(job));
+}
+
+export async function listInterruptedVideoJobs(): Promise<VideoJob[]> {
+  const jobs = await listVideoJobs();
+  return jobs.filter((job) => job.status === "pending" || job.status === "processing");
+}
+
+export function isManagedVideoJob(job: VideoJob): boolean {
+  return job.executionMode === "managed" || (job.executionMode === undefined && job.requestedBy !== "cli");
 }
 
 function hashVideoInput(input: CreateVideoJobInput): string {

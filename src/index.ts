@@ -3,13 +3,22 @@ import { config } from "./config.js";
 import { startSlackSocketModeClient } from "./slack/socketModeClient.js";
 import { startGenerationRequestWatcher } from "./domains/slides/generationRequestWatcher.js";
 import { reconcileSessionStatuses } from "./shared/sessionStatusStore.js";
-import { recoverVideoJobs } from "./domains/video/videoGenerationQueue.js";
+import { markInterruptedVideoJobs } from "./domains/video/videoGenerationQueue.js";
 
 const app = Fastify({
   logger: true
 });
 
 app.get("/health", async () => ({ ok: true }));
+try {
+  const result = await markInterruptedVideoJobs();
+  if (result.total > 0) app.log.info(
+    "Marked " + result.total + " interrupted video job(s) action_required (managed=" + result.managed + ", cli=" + result.cli + ", failed=" + result.failed + ")"
+  );
+} catch (error) {
+  app.log.warn("Interrupted video job reconciliation skipped: " + (error instanceof Error ? error.message : String(error)));
+}
+
 
 // Slack 入力は Socket Mode のみ。旧 HTTP webhook 経路(routes/slack.ts)は
 // 署名検証が無く未使用だったため 2026-07 に削除した(必要なら git 履歴から復元)。
@@ -30,12 +39,6 @@ try {
     }`
   );
 }
-
-recoverVideoJobs().then((count) => {
-  if (count > 0) app.log.info(`Recovered ${count} video job(s)`);
-}).catch((error) => {
-  app.log.warn(`Video job recovery skipped: ${error instanceof Error ? error.message : String(error)}`);
-});
 
 reconcileSessionStatuses().catch((error) => {
   app.log.warn(

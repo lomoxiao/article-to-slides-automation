@@ -16,6 +16,8 @@
     "manga:check": "tsx src/scripts/checkMangaTemplates.ts",
     "manga:resume": "tsx src/scripts/resumeMangaJob.ts",
     "video:generate": "tsx src/scripts/generateVideo.ts",
+    "video:jobs:finalize-cli": "tsx src/scripts/finalizeLegacyCliVideoJobs.ts",
+    "video:jobs:finalize-cli:apply": "tsx src/scripts/finalizeLegacyCliVideoJobs.ts --apply",
     "video:template:smoke": "tsx src/scripts/renderVideoTemplateSmoke.ts",
     "video:preflight": "tsx src/scripts/videoPreflight.ts",
     "notebooklm:login": "tsx src/scripts/notebookLmLogin.ts",
