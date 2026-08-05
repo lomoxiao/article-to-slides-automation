@@ -233,6 +233,7 @@ async function handleVideoGenerateMessage(event: SlackMessageEvent): Promise<voi
       url: parsed.url,
       audience: parsed.audience,
       focus: parsed.focus,
+      motionMode: parsed.motionMode,
       requestedBy: event.user,
       sourceChannelId: event.channel
     });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { MotionMode } from "./motionTypes.js";
 
 const forbiddenValue = /<\/?(?:script|iframe|object|embed|html)|(?:https?:\/\/)|(?:\.\.[/\\])|(?:[A-Za-z]:\\)|(?:\$\()|(?:`)/i;
 const safeText = (minimum: number, maximum: number) =>
@@ -67,6 +68,9 @@ export type VideoJob = {
   sourceTitle?: string;
   audience?: string;
   focus?: string;
+  motionMode?: MotionMode;
+  motionModeUsed?: MotionMode;
+  motionFallbackReason?: string;
   requestedBy?: string;
   sourceChannelId?: string;
   executionMode?: VideoExecutionMode;

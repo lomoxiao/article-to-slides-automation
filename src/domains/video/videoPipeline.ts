@@ -7,8 +7,10 @@ import { upsertDriveBinary } from "../../shared/driveBinaryUploader.js";
 import { fetchSourceContent } from "../../shared/sourceAggregator.js";
 import { calculateCaptionTimeline, findShortCaptionMerge, type CaptionPhraseTiming } from "./captionTiming.js";
 import { createHyperframesProject } from "./composition.js";
-import { checkProject, lintProject, renderProject, snapshotProject } from "./hyperframesCli.js";
+import { checkProject, HyperframesProjectValidationError, lintProject, renderProject, snapshotProject } from "./hyperframesCli.js";
 import { getNarrationProvider } from "./narrationProvider.js";
+import { generateMotionPlan } from "./motionPlan.js";
+import { createBasicMotionPlan, motionPlanSchema, validateMotionPlanContract, type MotionPlan } from "./motionTypes.js";
 import { assertVideoBrowserReady } from "./preflightState.js";
 import { applyAtempo, concatWavFiles, probeDuration, validateFinalVideo } from "./media.js";
 import { generateVideoPlan, targetNarrationCharacters } from "./videoPlan.js";
@@ -25,9 +27,10 @@ import {
 const CHECKPOINT_VERSIONS: Record<string, number> = {
   source: 1,
   plan: 2,
+  storyboard: 1,
   tts: 2,
   captions: 2,
-  render: 2
+  render: 3
 };
 
 export function checkpointVersionForStep(step: string): number {
@@ -104,7 +107,30 @@ export async function generateVideoLocally(
     await writeCheckpoint(job, "plan", [planPath]);
   }
 
-  job = await updateVideoJob(job, { stage: "video_tts", completedSteps: ["source", "plan"] });
+  const motionPlanPath = path.join(job.jobDir, "motionPlan.json");
+  const requestedMotionMode = job.motionMode ?? "basic";
+  let motionPlan: MotionPlan;
+  let motionFallbackReason = job.motionFallbackReason;
+  if (requestedMotionMode !== "rich" || !config.video.richMotionEnabled) {
+    motionPlan = createBasicMotionPlan(plan);
+    motionFallbackReason = requestedMotionMode === "rich" ? "VIDEO_RICH_MOTION_ENABLED is false" : undefined;
+    await writeFile(motionPlanPath, JSON.stringify(motionPlan, null, 2) + "\n", "utf8");
+    await writeCheckpoint(job, "storyboard", [motionPlanPath]);
+  } else if (await hasValidCheckpoint(job, "storyboard", [motionPlanPath])) {
+    motionPlan = motionPlanSchema.parse(JSON.parse(await readFile(motionPlanPath, "utf8")));
+    validateMotionPlanContract(motionPlan, plan);
+  } else {
+    logger(`[video] ${job.id}: rich motion storyboarding v1`);
+    const generated = await generateMotionPlan({ plan, audience: job.audience, focus: job.focus, jobDir: job.jobDir });
+    motionPlan = generated.plan;
+    motionFallbackReason = generated.fallbackReason;
+    await writeFile(motionPlanPath, JSON.stringify(motionPlan, null, 2) + "\n", "utf8");
+    await writeCheckpoint(job, "storyboard", [motionPlanPath]);
+  }
+  const motionModeUsed = motionPlan.scenes.some((scene) => scene.diagram.kind !== "legacy") ? "rich" : "basic";
+  job = await updateVideoJob(job, { motionModeUsed, motionFallbackReason });
+
+  job = await updateVideoJob(job, { stage: "video_tts", completedSteps: ["source", "plan", "storyboard"] });
   await onProgress?.(job, "意味単位で日本語ナレーションを生成しています");
   const captionsPath = path.join(job.jobDir, "captions.json");
   const narrationPath = path.join(job.jobDir, "audio", "narration.wav");
@@ -144,7 +170,7 @@ export async function generateVideoLocally(
 
     job = await updateVideoJob(job, {
       stage: "video_captioning",
-      completedSteps: ["source", "plan", "tts"]
+      completedSteps: ["source", "plan", "storyboard", "tts"]
     });
     await onProgress?.(job, "意味単位の字幕タイミングを確定しています");
     audioState = await finalizeCaptionAudio(job, groups, tempoFactor, captionsPath, narrationPath);
@@ -163,21 +189,33 @@ export async function generateVideoLocally(
 
   job = await updateVideoJob(job, {
     stage: "video_rendering",
-    completedSteps: ["source", "plan", "tts", "captions"]
+    completedSteps: ["source", "plan", "storyboard", "tts", "captions"]
   });
   await onProgress?.(job, "MP4をレンダリングしています");
   const projectDir = path.join(job.jobDir, "project");
-  const composition = await createHyperframesProject({
-    projectDir,
-    plan,
-    sceneDurations: audioState.sceneDurations,
-    captions: audioState.captions,
-    narrationPath
+  let composition = await createHyperframesProject({
+    projectDir, plan, motionPlan, sceneDurations: audioState.sceneDurations,
+    captions: audioState.captions, narrationPath
   });
-  logger(`[video] ${job.id}: lint/check/snapshot/render`);
-  await lintProject(projectDir);
-  await checkProject(projectDir, composition.sceneMidpoints);
-  await snapshotProject(projectDir, path.join(job.jobDir, "snapshots"), composition.sceneMidpoints);
+  logger(`[video] ${job.id}: lint/check/snapshot/render (${job.motionModeUsed})`);
+  try {
+    await lintProject(projectDir);
+    await checkProject(projectDir, composition.inspectionTimes);
+  } catch (error) {
+    if (job.motionModeUsed !== "rich" || !(error instanceof HyperframesProjectValidationError)) throw error;
+    motionFallbackReason = `Rich composition preflight failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 2_000);
+    motionPlan = createBasicMotionPlan(plan);
+    await writeFile(motionPlanPath, JSON.stringify(motionPlan, null, 2) + "\n", "utf8");
+    await writeCheckpoint(job, "storyboard", [motionPlanPath]);
+    job = await updateVideoJob(job, { motionModeUsed: "basic", motionFallbackReason });
+    composition = await createHyperframesProject({
+      projectDir, plan, motionPlan, sceneDurations: audioState.sceneDurations,
+      captions: audioState.captions, narrationPath
+    });
+    await lintProject(projectDir);
+    await checkProject(projectDir, composition.inspectionTimes);
+  }
+  await snapshotProject(projectDir, path.join(job.jobDir, "snapshots"), composition.sceneSnapshotTimes);
   await renderProject(projectDir, outputPath);
   const validated = await validateFinalVideo(outputPath);
   const file = await stat(outputPath);
@@ -186,11 +224,11 @@ export async function generateVideoLocally(
   }
 
   job = await updateVideoJob(job, {
-    completedSteps: ["source", "plan", "tts", "captions", "render"],
+    completedSteps: ["source", "plan", "storyboard", "tts", "captions", "render"],
     durationSec: validated.durationSec,
     sizeBytes: file.size
   });
-  await writeManifest(job, plan, audioState.sceneDurations, audioState.captions, audioState.phraseDurations);
+  await writeManifest(job, plan, motionPlan, audioState.sceneDurations, audioState.captions, audioState.phraseDurations);
   await createProjectArchive(job);
   await writeCheckpoint(job, "render", [outputPath, manifestPath, archivePath]);
   return job;
@@ -204,14 +242,15 @@ export async function uploadVideoOutputs(initialJob: VideoJob): Promise<{ job: V
   const archive = await uploadArtifact(job, "projectArchive", path.join(job.jobDir, "project.zip"), "application/zip", `${job.id}-project.zip`);
   job = archive.job;
   const plan = videoPlanSchema.parse(JSON.parse(await readFile(path.join(job.jobDir, "videoPlan.json"), "utf8")));
+  const motionPlan = motionPlanSchema.parse(JSON.parse(await readFile(path.join(job.jobDir, "motionPlan.json"), "utf8")));
   const captions = parseCaptionCues(JSON.parse(await readFile(path.join(job.jobDir, "captions.json"), "utf8")), plan.scenes.length);
   const localManifest = JSON.parse(await readFile(path.join(job.jobDir, "manifest.json"), "utf8")) as {
     sceneDurations?: number[]; captions?: { phraseDurations?: number[][] };
   };
-  await writeManifest(job, plan, localManifest.sceneDurations ?? [], captions, localManifest.captions?.phraseDurations ?? []);
+  await writeManifest(job, plan, motionPlan, localManifest.sceneDurations ?? [], captions, localManifest.captions?.phraseDurations ?? []);
   const manifest = await uploadArtifact(job, "manifest", path.join(job.jobDir, "manifest.json"), "application/json", `${job.id}-manifest.json`);
   job = manifest.job;
-  await writeManifest(job, plan, localManifest.sceneDurations ?? [], captions, localManifest.captions?.phraseDurations ?? []);
+  await writeManifest(job, plan, motionPlan, localManifest.sceneDurations ?? [], captions, localManifest.captions?.phraseDurations ?? []);
   job = (await uploadArtifact(job, "manifest", path.join(job.jobDir, "manifest.json"), "application/json", `${job.id}-manifest.json`)).job;
   const fileId = job.mp4FileId;
   if (!fileId) throw new VideoActionRequiredError("DRIVE_CREATE_INDETERMINATE", "MP4 file ID was not persisted");
@@ -413,13 +452,14 @@ async function savePlan(job: VideoJob, plan: VideoPlan): Promise<void> {
 async function writeManifest(
   job: VideoJob,
   plan: VideoPlan,
+  motionPlan: MotionPlan,
   sceneDurations: number[],
   captions: CaptionCue[],
   phraseDurations: number[][]
 ): Promise<void> {
   const manifest = {
     schemaVersion: 2,
-    pipelineVersion: 2,
+    pipelineVersion: 3,
     jobId: job.id,
     sourceUrl: job.url,
     inputHash: job.inputHash,
@@ -432,6 +472,14 @@ async function writeManifest(
       phraseDurations
     },
     sceneDurations,
+    motion: {
+      requested: job.motionMode ?? "basic",
+      used: job.motionModeUsed ?? "basic",
+      theme: motionPlan.theme,
+      storyboardFile: "motionPlan.json",
+      templates: motionPlan.scenes.map((scene) => scene.diagram.kind),
+      fallbackReason: job.motionFallbackReason
+    },
     durationSec: job.durationSec,
     sizeBytes: job.sizeBytes,
     drive: {
@@ -455,7 +503,7 @@ async function createProjectArchive(job: VideoJob): Promise<void> {
     zip.on("error", reject);
     zip.pipe(output);
     zip.directory(path.join(job.jobDir, "project"), "project");
-    for (const name of ["source.txt", "videoPlan.json", "captions.json", "manifest.json"]) {
+    for (const name of ["source.txt", "videoPlan.json", "motionPlan.json", "captions.json", "manifest.json"]) {
       zip.file(path.join(job.jobDir, name), { name });
     }
     void zip.finalize();

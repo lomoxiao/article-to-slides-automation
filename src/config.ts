@@ -54,6 +54,7 @@ const envSchema = z.object({
   // 未設定ならアップロードはスキップ。Google ドキュメントに変換して固定名で upsert する。
   MANGA_DRIVE_FOLDER_ID: z.string().optional(),
   VIDEO_GENERATION_ENABLED: envBool(false),
+  VIDEO_RICH_MOTION_ENABLED: envBool(false),
   VIDEO_DRIVE_FOLDER_ID: z.string().optional(),
   VIDEO_TTS_PYTHON: z.string().default(".venv-video/Scripts/python.exe"),
   VIDEO_TTS_VOICE: z.string().default("jf_alpha"),
@@ -182,6 +183,7 @@ export const config = {
   },
   video: {
     enabled: env.VIDEO_GENERATION_ENABLED,
+    richMotionEnabled: env.VIDEO_RICH_MOTION_ENABLED,
     driveFolderId: env.VIDEO_DRIVE_FOLDER_ID,
     ttsPython: env.VIDEO_TTS_PYTHON,
     ttsVoice: env.VIDEO_TTS_VOICE,

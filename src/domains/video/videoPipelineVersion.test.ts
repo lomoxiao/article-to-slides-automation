@@ -9,5 +9,8 @@ test("reuses legacy source checkpoints but invalidates legacy v1 video stages", 
   assert.equal(isCheckpointVersionCompatible("plan", undefined), false);
   assert.equal(isCheckpointVersionCompatible("tts", 1), false);
   assert.equal(isCheckpointVersionCompatible("captions", 2), true);
-  assert.equal(isCheckpointVersionCompatible("render", 2), true);
+  assert.equal(checkpointVersionForStep("storyboard"), 1);
+  assert.equal(checkpointVersionForStep("render"), 3);
+  assert.equal(isCheckpointVersionCompatible("render", 2), false);
+  assert.equal(isCheckpointVersionCompatible("render", 3), true);
 });

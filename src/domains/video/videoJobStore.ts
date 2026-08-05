@@ -12,7 +12,7 @@ const schema = z.object({
   createdAt: z.string(), updatedAt: z.string(), jobDir: z.string()
 }).passthrough();
 
-export type CreateVideoJobInput = Pick<VideoJob, "url" | "sourceText" | "sourceTitle" | "audience" | "focus" | "requestedBy" | "sourceChannelId" | "executionMode">;
+export type CreateVideoJobInput = Pick<VideoJob, "url" | "sourceText" | "sourceTitle" | "audience" | "focus" | "motionMode" | "requestedBy" | "sourceChannelId" | "executionMode">;
 
 export async function createVideoJob(input: CreateVideoJobInput): Promise<VideoJob> {
   const now = new Date();
@@ -20,8 +20,9 @@ export async function createVideoJob(input: CreateVideoJobInput): Promise<VideoJ
   const jobDir = path.join(jobsRoot, id);
   const job: VideoJob = {
     ...input,
+    motionMode: input.motionMode ?? "rich",
     id,
-    inputHash: hashVideoInput(input),
+    inputHash: hashVideoInput({ ...input, motionMode: input.motionMode ?? "rich" }),
     status: "pending",
     stage: "video_queued",
     createdAt: now.toISOString(),

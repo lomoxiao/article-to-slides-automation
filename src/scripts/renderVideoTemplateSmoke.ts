@@ -1,13 +1,14 @@
-import { copyFile, mkdir, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { calculateCaptionTimeline, type CaptionPhraseTiming } from "../domains/video/captionTiming.js";
 import { createHyperframesProject } from "../domains/video/composition.js";
 import { checkProject, lintProject, renderProject, snapshotProject } from "../domains/video/hyperframesCli.js";
 import { getNarrationProvider } from "../domains/video/narrationProvider.js";
+import { assertRichMotionSmokeTextPreserved, createRichMotionSmokePlan } from "../domains/video/richMotionSmokeFixture.js";
 import { applyAtempo, concatWavFiles, probeDuration, validateFinalVideo } from "../domains/video/media.js";
 import { videoPlanSchema } from "../domains/video/types.js";
 
-const root = path.resolve("jobs", "video", "template-smoke");
+const root = path.resolve("jobs", "video", "template-rich-smoke");
 const audioDir = path.join(root, "audio");
 await mkdir(audioDir, { recursive: true });
 
@@ -77,6 +78,8 @@ const plan = videoPlanSchema.parse({
     }
   ]
 });
+const motionPlan = createRichMotionSmokePlan(plan);
+await writeFile(path.join(root, "motionPlan.json"), JSON.stringify(motionPlan, null, 2) + "\n", "utf8");
 
 const provider = getNarrationProvider();
 const rawGroups: Array<Array<CaptionPhraseTiming & { path: string }>> = [];
@@ -133,15 +136,17 @@ const projectDir = path.join(root, "project");
 const composition = await createHyperframesProject({
   projectDir,
   plan,
+  motionPlan,
   sceneDurations: await Promise.all(sceneAudioPaths.map((scenePath) => probeDuration(scenePath))),
   captions: timeline.cues,
   narrationPath
 });
+assertRichMotionSmokeTextPreserved(await readFile(path.join(projectDir, "index.html"), "utf8"));
 await lintProject(projectDir);
-await checkProject(projectDir, composition.sceneMidpoints);
-await snapshotProject(projectDir, path.join(root, "snapshots"), composition.sceneMidpoints);
+await checkProject(projectDir, composition.inspectionTimes);
+await snapshotProject(projectDir, path.join(root, "snapshots"), composition.sceneSnapshotTimes);
 
-const outputPath = path.join(root, "output.mp4");
+const outputPath = path.join(root, "rich-motion-smoke.mp4");
 await renderProject(projectDir, outputPath);
 const validated = await validateFinalVideo(outputPath);
 const output = await stat(outputPath);
@@ -155,6 +160,9 @@ const result = {
   sceneDurations: composition.sceneStarts.map((start, index) =>
     index === composition.sceneStarts.length - 1 ? composition.durationSec - start : composition.sceneStarts[index + 1] - start
   ),
+  motionMode: "rich",
+  theme: motionPlan.theme,
+  templates: motionPlan.scenes.map((scene) => scene.diagram.kind),
   narrationDuration,
   outputPath,
   sizeBytes: output.size,

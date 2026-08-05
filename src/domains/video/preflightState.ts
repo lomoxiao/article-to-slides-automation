@@ -12,7 +12,7 @@ export async function markVideoBrowserReady(): Promise<void> {
 }
 
 export async function markVideoRuntimeReady(): Promise<void> {
-  await writeMarker(runtimeMarker, "tts-and-captions", { ttsProvider: KOKORO_JA_PROVIDER_ID, pipelineVersion: "2" });
+  await writeMarker(runtimeMarker, "tts-and-captions", { ttsProvider: KOKORO_JA_PROVIDER_ID, pipelineVersion: "3" });
 }
 
 export async function assertVideoBrowserReady(): Promise<void> {
@@ -20,7 +20,7 @@ export async function assertVideoBrowserReady(): Promise<void> {
 }
 
 export async function assertVideoRuntimeReady(): Promise<void> {
-  await assertMarker(runtimeMarker, "Run: npm run video:preflight:smoke", KOKORO_JA_PROVIDER_ID, "tts-and-captions", "2");
+  await assertMarker(runtimeMarker, "Run: npm run video:preflight:smoke", KOKORO_JA_PROVIDER_ID, "tts-and-captions", "3");
 }
 
 async function writeMarker(markerPath: string, kind: string, extra: Record<string, string> = {}): Promise<void> {

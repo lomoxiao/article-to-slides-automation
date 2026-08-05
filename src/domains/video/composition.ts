@@ -1,14 +1,15 @@
 import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { CaptionCue, VideoPlan, VisualSpec } from "./types.js";
+import type { MotionDiagram, MotionPlan } from "./motionTypes.js";
+import type { CaptionCue, VideoPlan, VideoScene, VisualSpec } from "./types.js";
+
+export type CompositionResult = {
+  sceneStarts: number[]; sceneMidpoints: number[]; inspectionTimes: number[]; sceneSnapshotTimes: number[]; durationSec: number;
+};
 
 export async function createHyperframesProject(input: {
-  projectDir: string;
-  plan: VideoPlan;
-  sceneDurations: number[];
-  captions: CaptionCue[];
-  narrationPath: string;
-}): Promise<{ sceneStarts: number[]; sceneMidpoints: number[]; durationSec: number }> {
+  projectDir: string; plan: VideoPlan; motionPlan?: MotionPlan; sceneDurations: number[]; captions: CaptionCue[]; narrationPath: string;
+}): Promise<CompositionResult> {
   const assetsDir = path.join(input.projectDir, "assets");
   await mkdir(assetsDir, { recursive: true });
   await Promise.all([
@@ -17,108 +18,84 @@ export async function createHyperframesProject(input: {
     copyFile(path.resolve("assets", "video", "NotoSansJP.ttf"), path.join(assetsDir, "NotoSansJP.ttf")),
     copyFile(path.resolve("assets", "video", "OFL.txt"), path.join(assetsDir, "OFL.txt"))
   ]);
-
-  const timeline = calculateSceneTimeline(input.sceneDurations);
-  const starts = timeline.sceneStarts;
-  const durationSec = timeline.durationSec;
-  const midpoints = timeline.sceneMidpoints;
-  const scenes = input.plan.scenes.map((scene, index) =>
-    renderScene(scene.screenText, scene.supportingText, scene.visual, index, starts[index], input.sceneDurations[index])
-  ).join("");
-  const captions = input.captions.map((cue) => renderCaption(cue, durationSec)).join("");
-
-  const html = `<!doctype html>
-<html lang="ja" data-resolution="landscape"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=1920,height=1080">
-<script src="./assets/gsap.min.js"></script>
-<style>
-@font-face{font-family:NotoSansJP;src:url("./assets/NotoSansJP.ttf") format("truetype");font-weight:100 900;font-display:block}
-*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#08121f;color:#f7fbff}
-body{font-family:NotoSansJP,sans-serif}.scene{position:absolute;inset:0}.scene-content{position:absolute;inset:0;padding:92px 112px 184px;display:grid;grid-template-columns:minmax(0,1.08fr) minmax(540px,.92fr);gap:72px;align-items:center;opacity:0;background:radial-gradient(circle at 82% 18%,rgba(62,214,185,.18),transparent 34%),linear-gradient(135deg,#07111f,#10263a)}
-.copy{min-width:0}.kicker{color:#52e0c4;font-size:25px;letter-spacing:.14em;font-weight:700}.headline{font-size:68px;line-height:1.22;font-weight:850;margin-top:24px;max-width:1040px;text-wrap:balance;overflow-wrap:anywhere}.headline.compact{font-size:59px}.headline.tight{font-size:52px}
-.supporting{margin-top:30px;max-width:970px;color:#c2d2de;font-size:31px;line-height:1.55;font-weight:500;text-wrap:balance}.counter{margin-top:30px;color:#8099ac;font-size:23px;letter-spacing:.08em}
-.visual-card{width:100%;height:550px;border:2px solid rgba(82,224,196,.48);border-radius:44px;padding:42px;background:linear-gradient(155deg,rgba(13,38,56,.96),rgba(7,21,35,.92));box-shadow:0 32px 90px rgba(0,0,0,.34);display:flex;flex-direction:column;justify-content:center;overflow:hidden}
-.visual-head{display:flex;align-items:center;gap:18px;color:#52e0c4;font-size:22px;font-weight:800;letter-spacing:.1em;margin-bottom:26px}.visual-icon{width:44px;height:44px;flex:none}.visual-icon circle,.visual-icon path,.visual-icon polyline{fill:none;stroke:#52e0c4;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
-.keyword-list{display:flex;flex-wrap:wrap;gap:18px}.keyword{padding:18px 24px;border-radius:999px;background:rgba(82,224,196,.12);border:1px solid rgba(82,224,196,.5);font-size:30px;font-weight:750}
-.visual-list{display:grid;gap:17px;margin:0;padding:0;list-style:none}.visual-list li{display:flex;align-items:flex-start;gap:16px;padding:17px 20px;border-radius:20px;background:rgba(255,255,255,.055);font-size:28px;line-height:1.35;font-weight:650}.bullet{color:#52e0c4;font-weight:900;min-width:34px}
-.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.compare-side{padding:22px;border-radius:24px;background:rgba(255,255,255,.055);min-width:0}.compare-label{color:#52e0c4;font-size:24px;font-weight:800;margin-bottom:14px}.compare-item{font-size:24px;line-height:1.4;padding:9px 0;border-top:1px solid rgba(255,255,255,.1)}
-.number-value{color:#52e0c4;font-size:104px;line-height:1;font-weight:900;letter-spacing:-.04em;overflow-wrap:anywhere}.number-label{font-size:31px;line-height:1.4;margin-top:24px;font-weight:700}.quote-text{font-size:34px;line-height:1.6;font-weight:700;text-wrap:balance}.quote-mark{color:#52e0c4;font-size:86px;line-height:.6}
-.caption-cue{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);width:min(1500px,calc(100% - 240px));min-height:104px;padding:18px 42px;border-radius:28px;background:rgba(4,12,22,.94);border:2px solid rgba(82,224,196,.8);color:#fff;font-size:39px;line-height:1.38;font-weight:750;text-align:center;display:grid;place-items:center;white-space:normal;text-wrap:balance;overflow:hidden;z-index:50}
-</style></head>
-<body><div id="root" data-composition-id="main" data-start="0" data-duration="${durationSec.toFixed(3)}" data-width="1920" data-height="1080">
-<audio id="narration-audio" class="clip" src="./assets/narration.wav" data-start="0" data-duration="${durationSec.toFixed(3)}" data-track-index="90" data-volume="1"></audio>
-${scenes}${captions}</div>
-<script>window.__timelines=window.__timelines||{};const tl=gsap.timeline({paused:true});
-${input.plan.scenes.map((_, index) => `tl.fromTo("#scene-content-${index}",{opacity:0,y:24},{opacity:1,y:0,duration:.45,ease:"power2.out"},${starts[index].toFixed(3)});tl.to("#scene-content-${index}",{opacity:0,duration:.35},${Math.max(starts[index], starts[index] + input.sceneDurations[index] - .35).toFixed(3)});tl.set("#scene-content-${index}",{opacity:0},${(starts[index] + input.sceneDurations[index]).toFixed(3)});`).join("")}
-tl.to({}, {duration:${durationSec.toFixed(3)}},0);window.__timelines.main=tl;</script></body></html>`;
+  const clock = calculateSceneTimeline(input.sceneDurations);
+  const rendered = input.plan.scenes.map((scene, index) => renderScene({
+    scene, index, start: clock.sceneStarts[index], duration: input.sceneDurations[index],
+    diagram: input.motionPlan?.scenes[index]?.diagram ?? { kind: "legacy" },
+    cues: input.captions.filter((cue) => cue.sceneIndex === index)
+  }));
+  const inspectionTimes = unique([...clock.sceneMidpoints, ...rendered.filter((value) => value.rich).map((value) => value.peak)]).slice(0, 16);
+  const sceneSnapshotTimes = rendered.map((value, index) => value.rich ? value.peak : clock.sceneMidpoints[index]);
+  const captions = input.captions.map((cue) => renderCaption(cue, clock.durationSec)).join("");
+  const html = `<!doctype html><html lang="ja" data-resolution="landscape"><head><meta charset="UTF-8"><meta name="viewport" content="width=1920,height=1080"><script src="./assets/gsap.min.js"></script><style>${css()}</style></head><body><div id="root" data-composition-id="main" data-start="0" data-duration="${clock.durationSec.toFixed(3)}" data-width="1920" data-height="1080"><div class="grid"></div><div class="topbar"><i></i>ARTICLE / MOTION EXPLAINER <b>DARK-CYAN V1</b></div><audio id="narration-audio" class="clip" src="./assets/narration.wav" data-start="0" data-duration="${clock.durationSec.toFixed(3)}" data-track-index="90" data-volume="1"></audio>${rendered.map((value) => value.html).join("")}${captions}<div class="progress"><div class="progress-fill"></div></div></div><script>window.__timelines=window.__timelines||{};const tl=gsap.timeline({paused:true});${rendered.map((value) => value.timeline).join("")}tl.fromTo(".progress-fill",{scaleX:0},{scaleX:1,duration:${clock.durationSec.toFixed(3)},ease:"none"},0);tl.to(".grid",{backgroundPosition:"192px 128px",duration:${clock.durationSec.toFixed(3)},ease:"none"},0);${input.captions.map((cue) => captionTimeline(cue, clock.durationSec)).join("")}tl.to({},{duration:${clock.durationSec.toFixed(3)}},0);window.__timelines.main=tl;</script></body></html>`;
   await Promise.all([
     writeFile(path.join(input.projectDir, "index.html"), html, "utf8"),
     writeFile(path.join(input.projectDir, "hyperframes.json"), JSON.stringify({ media: { autoProxy: true }, paths: { blocks: "compositions", components: "compositions/components", assets: "assets" } }, null, 2) + "\n", "utf8"),
-    writeFile(path.join(input.projectDir, "meta.json"), JSON.stringify({ id: "article-explainer", name: input.plan.title }, null, 2) + "\n", "utf8")
+    writeFile(path.join(input.projectDir, "meta.json"), JSON.stringify({ id: "article-motion-explainer", name: input.plan.title }, null, 2) + "\n", "utf8")
   ]);
-  return { sceneStarts: starts, sceneMidpoints: midpoints, durationSec };
+  return { ...clock, inspectionTimes, sceneSnapshotTimes };
 }
 
 export function calculateSceneTimeline(sceneDurations: number[]): { sceneStarts: number[]; sceneMidpoints: number[]; durationSec: number } {
-  if (sceneDurations.length === 0 || sceneDurations.some((duration) => !Number.isFinite(duration) || duration <= 0)) {
-    throw new Error("Scene durations must be finite positive numbers");
+  if (!sceneDurations.length || sceneDurations.some((duration) => !Number.isFinite(duration) || duration <= 0)) throw new Error("Scene durations must be finite positive numbers");
+  const sceneStarts: number[] = []; let cursor = 0;
+  for (const duration of sceneDurations) { sceneStarts.push(cursor); cursor += duration; }
+  return { sceneStarts, sceneMidpoints: sceneStarts.map((start, index) => start + sceneDurations[index] / 2), durationSec: cursor };
+}
+
+function renderScene(input: { scene: VideoScene; diagram: MotionDiagram; index: number; start: number; duration: number; cues: CaptionCue[] }) {
+  const { scene, diagram, index, start, duration, cues } = input;
+  const end = start + duration; const rich = diagram.kind !== "legacy";
+  const cueStarts = cues.map((cue) => cue.startMs / 1000);
+  const beat1 = cueStarts[1] ?? start + duration * .38; const beat2 = cueStarts[2] ?? start + duration * .64;
+  const peak = Math.min(end - .55, Math.max(beat2 + .35, start + duration * .68));
+  const headlineClass = scene.screenText.length > 30 ? " tight" : scene.screenText.length > 22 ? " compact" : "";
+  const visual = rich ? renderDiagram(diagram, index) : renderLegacy(scene.visual);
+  const timeline = `tl.fromTo("#scene-content-${index}",{opacity:0,scale:1.025},{opacity:1,scale:1,duration:.55,ease:"power3.out"},${start.toFixed(3)});tl.to("#scene-content-${index}",{opacity:0,scale:.99,duration:.35,ease:"power2.in"},${(end - .35).toFixed(3)});tl.set("#scene-content-${index}",{opacity:0},${end.toFixed(3)});tl.fromTo("#scene-${index} .kicker",{opacity:0,x:-30},{opacity:1,x:0,duration:.5,ease:"power3.out"},${(start + .14).toFixed(3)});tl.fromTo("#scene-${index} .headline",{opacity:0,y:36},{opacity:1,y:0,duration:.65,ease:"power3.out"},${(start + .28).toFixed(3)});tl.fromTo("#scene-${index} .supporting",{opacity:0,y:22},{opacity:1,y:0,duration:.5,ease:"power2.out"},${(start + .65).toFixed(3)});tl.fromTo("#scene-${index} .visual-stage",{opacity:0,x:64},{opacity:1,x:0,duration:.7,ease:"expo.out"},${(start + .22).toFixed(3)});${rich ? richTimeline(index, start, beat1, beat2, peak, diagram.kind) : `tl.fromTo("#scene-${index} .legacy-item",{opacity:0,y:22},{opacity:1,y:0,duration:.38,stagger:.12,ease:"power2.out"},${(start + .8).toFixed(3)});`}`;
+  const html = `<section id="scene-${index}" class="scene clip" data-layout-allow-occlusion="true" data-start="${start.toFixed(3)}" data-duration="${duration.toFixed(3)}" data-track-index="${index + 1}"><div id="scene-content-${index}" class="scene-content"><div class="copy"><div class="kicker">${String(index + 1).padStart(2, "0")} · ${label(diagram.kind)}</div><div class="headline${headlineClass}">${escapeHtml(scene.screenText)}</div><div class="supporting">${escapeHtml(scene.supportingText)}</div><div class="counter">ARTICLE EXPLAINER / ${rich ? "RICH MOTION" : "BASIC FALLBACK"}</div></div><div class="visual-stage"><div class="stage-label">${label(diagram.kind)}</div><i class="led"></i>${visual}</div></div></section>`;
+  return { html, timeline, peak, rich };
+}
+
+function renderDiagram(diagram: Exclude<MotionDiagram, { kind: "legacy" }>, sceneIndex: number): string {
+  const item = (value: { label: string; detail?: string; tone?: string }, extra = "") => `<div class="motion-item tone-${value.tone ?? "neutral"} ${extra}"><strong>${escapeHtml(value.label)}</strong>${value.detail ? `<small>${escapeHtml(value.detail)}</small>` : ""}</div>`;
+  if (diagram.kind === "topology") return `<div id="motion-${sceneIndex}" class="diagram topology"><div class="nodes">${diagram.nodes.map((node, index) => `<div class="node"><b>0${index + 1}</b>${item(node)}</div>`).join("")}</div><div class="edges">${diagram.edges.map((edge) => `<div class="edge edge-${edge.state ?? "active"}"><span>${edge.from + 1}</span><i class="flow-line"></i><span>${edge.to + 1}</span>${edge.label ? `<small>${escapeHtml(edge.label)}</small>` : ""}</div>`).join("")}</div></div>`;
+  if (diagram.kind === "migration") return `<div id="motion-${sceneIndex}" class="diagram migration">${group(diagram.before, "before")}<div class="arrow">→</div>${group(diagram.after, "after focus")}</div>`;
+  if (diagram.kind === "cycle" || diagram.kind === "loop") return `<div id="motion-${sceneIndex}" class="diagram orbit"><div class="orbit-ring flow-line"></div><div class="orbit-grid">${diagram.steps.map((step, index) => `<div class="orbit-item"><b>0${index + 1}</b>${item(step)}</div>`).join("")}</div><div class="orbit-center focus">${escapeHtml(diagram.center ?? label(diagram.kind))}</div><div class="token"></div></div>`;
+  if (diagram.kind === "timeline") return `<div id="motion-${sceneIndex}" class="diagram timeline"><div class="timeline-line flow-line"></div>${diagram.steps.map((step, index) => `<div class="timeline-item"><b>0${index + 1}</b>${item(step)}</div>`).join("")}</div>`;
+  if (diagram.kind === "branch" || diagram.kind === "cause-effect") return `<div id="motion-${sceneIndex}" class="diagram branch"><div class="source">${item(diagram.source)}</div><div class="branch-lines">${diagram.paths.map(() => '<i class="flow-line"></i>').join("")}</div><div class="paths">${diagram.paths.map((path) => item(path)).join("")}</div></div>`;
+  if (diagram.kind === "layers") return `<div id="motion-${sceneIndex}" class="diagram layers" data-layout-allow-overflow="true">${diagram.layers.map((layer, index) => item(layer, `layer ${index === diagram.focusIndex ? "focus" : ""}`)).join("")}<div class="zoom-frame"></div></div>`;
+  if (diagram.kind === "gates") return `<div id="motion-${sceneIndex}" class="diagram gates"><div class="gate-line flow-line"></div><div class="token" data-layout-allow-overlap="true">${escapeHtml(diagram.token)}</div><div class="gate-list">${diagram.gates.map((gate, index) => `<div class="gate"><b>0${index + 1}</b>${item(gate)}</div>`).join("")}</div><div class="result focus">✓<small>${escapeHtml(diagram.result)}</small></div>${diagram.blocked ? `<div class="blocked">× ${escapeHtml(diagram.blocked)}</div>` : ""}</div>`;
+  return `<div id="motion-${sceneIndex}" class="diagram metric"><div class="metric-ring flow-line"></div><div class="motion-item metric-core focus"><strong>${escapeHtml(diagram.value)}</strong><span>${escapeHtml(diagram.label)}</span></div>${diagram.comparison ? `<div class="metric-compare">${escapeHtml(diagram.comparison)}</div>` : ""}</div>`;
+}
+
+function group(value: { label: string; items: string[] }, extra: string): string { return `<div class="motion-item migration-group ${extra}"><span>${escapeHtml(value.label)}</span>${value.items.map((entry) => `<strong>${escapeHtml(entry)}</strong>`).join("")}</div>`; }
+
+function richTimeline(index: number, start: number, beat1: number, beat2: number, peak: number, kind: MotionDiagram["kind"]): string {
+  let value = `tl.fromTo("#motion-${index} .motion-item",{opacity:0,y:28,scale:.94},{opacity:1,y:0,scale:1,duration:.42,stagger:.13,ease:"back.out(1.55)"},${(start + .72).toFixed(3)});`;
+  if (["topology", "cycle", "loop", "timeline", "branch", "cause-effect", "gates", "metric"].includes(kind)) {
+    value += `tl.fromTo("#motion-${index} .flow-line",{opacity:0,scaleX:0},{opacity:1,scaleX:1,duration:.6,stagger:.12,ease:"expo.out"},${beat1.toFixed(3)});`;
   }
-  const sceneStarts: number[] = [];
-  let cursor = 0;
-  for (const duration of sceneDurations) {
-    sceneStarts.push(cursor);
-    cursor += duration;
+  if (kind === "migration") value += `tl.fromTo("#motion-${index} .arrow",{opacity:0,x:-24},{opacity:1,x:0,duration:.4},${beat1.toFixed(3)});tl.to("#motion-${index} .before",{opacity:.3,x:-18,duration:.5},${beat2.toFixed(3)});`;
+  if (kind === "gates") value += `tl.fromTo("#motion-${index} .token",{opacity:0,x:0},{opacity:1,x:650,duration:${Math.max(1, peak - beat2).toFixed(3)},ease:"power1.inOut"},${beat2.toFixed(3)});`;
+  if (kind === "layers") value += `tl.to("#motion-${index}",{scale:1.18,y:-55,duration:.8,ease:"power2.inOut"},${beat1.toFixed(3)});tl.fromTo("#motion-${index} .zoom-frame",{opacity:0,scale:.75},{opacity:1,scale:1,duration:.55},${beat2.toFixed(3)});tl.to("#motion-${index}",{scale:1,y:0,duration:.65},${peak.toFixed(3)});`;
+  else value += `tl.to("#motion-${index}",{scale:1.06,duration:.65,ease:"power2.inOut"},${peak.toFixed(3)});`;
+  if (["migration", "cycle", "loop", "layers", "gates", "metric"].includes(kind)) {
+    value += `tl.to("#motion-${index} .focus",{boxShadow:"0 0 65px rgba(56,232,255,.32)",scale:1.08,duration:.55,yoyo:true,repeat:1},${peak.toFixed(3)});`;
   }
-  return {
-    sceneStarts,
-    sceneMidpoints: sceneStarts.map((start, index) => start + sceneDurations[index] / 2),
-    durationSec: cursor
-  };
+  return value;
+}
+function renderLegacy(visual: VisualSpec): string {
+  if (visual.kind === "title") return `<div class="legacy">${visual.keywords.map((entry) => `<div class="legacy-item pill">${escapeHtml(entry)}</div>`).join("")}</div>`;
+  if (visual.kind === "keypoints" || visual.kind === "steps" || visual.kind === "summary") return `<div class="legacy list">${visual.items.map((entry, index) => `<div class="legacy-item"><b>0${index + 1}</b><span>${escapeHtml(entry)}</span></div>`).join("")}</div>`;
+  if (visual.kind === "compare") return `<div class="legacy compare">${[visual.left, visual.right].map((side) => `<div class="legacy-item"><b>${escapeHtml(side.label)}</b>${side.items.map((entry) => `<span>${escapeHtml(entry)}</span>`).join("")}</div>`).join("")}</div>`;
+  if (visual.kind === "number") return `<div class="legacy"><div class="legacy-item number"><b>${escapeHtml(visual.value)}</b><span>${escapeHtml(visual.label)}</span></div></div>`;
+  return `<div class="legacy"><div class="legacy-item quote">“${escapeHtml(visual.text)}”</div></div>`;
 }
 
-function renderScene(text: string, supportingText: string, visual: VisualSpec, index: number, start: number, duration: number): string {
-  const headlineClass = text.length > 30 ? " tight" : text.length > 22 ? " compact" : "";
-  return `<section id="scene-${index}" class="scene clip" data-start="${start.toFixed(3)}" data-duration="${duration.toFixed(3)}" data-track-index="${index + 1}">
-<div id="scene-content-${index}" class="scene-content"><div class="copy"><div class="kicker">ARTICLE EXPLAINER</div><div class="headline${headlineClass}">${escapeHtml(text)}</div><div class="supporting">${escapeHtml(supportingText)}</div><div class="counter">${String(index + 1).padStart(2, "0")} / KEY POINT</div></div>
-${renderVisual(visual)}</div></section>`;
-}
+function renderCaption(cue: CaptionCue, total: number): string { const start = Math.max(0, Math.min(total, cue.startMs / 1000)); const end = Math.max(start + .001, Math.min(total, cue.endMs / 1000)); return `<div id="${escapeHtml(cue.id)}" class="caption-cue clip" data-layout-allow-overlap="true" data-start="${start.toFixed(3)}" data-duration="${(end - start).toFixed(3)}" data-track-index="60"><span id="${escapeHtml(cue.id)}-inner" class="caption-inner">${escapeHtml(cue.text)}</span></div>`; }
+function captionTimeline(cue: CaptionCue, total: number): string { const start = Math.max(0, Math.min(total, cue.startMs / 1000)); const end = Math.max(start + .001, Math.min(total, cue.endMs / 1000)); return `tl.fromTo("#${cue.id}-inner",{opacity:0},{opacity:1,duration:.16},${start.toFixed(3)});tl.to("#${cue.id}-inner",{opacity:0,duration:.14},${Math.max(start, end - .14).toFixed(3)});tl.set("#${cue.id}-inner",{opacity:0},${end.toFixed(3)});`; }
+function unique(values: number[]): number[] { return [...new Set(values.map((value) => Math.round(value * 1000) / 1000))].sort((a, b) => a - b); }
+function label(kind: MotionDiagram["kind"]): string { return ({ legacy: "KEY POINT", topology: "TOPOLOGY", migration: "BEFORE / AFTER", cycle: "LIFECYCLE", branch: "BRANCHING", loop: "REQUEST LOOP", layers: "LAYERS", gates: "VALIDATION GATES", timeline: "TIMELINE", metric: "KEY METRIC", "cause-effect": "CAUSE / EFFECT" } as const)[kind]; }
+function escapeHtml(value: string): string { return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char); }
 
-function renderVisual(visual: VisualSpec): string {
-  const head = `<div class="visual-head">${visualIcon()}<span>${visualLabel(visual.kind)}</span></div>`;
-  if (visual.kind === "title") {
-    return `<div class="visual-card">${head}<div class="keyword-list">${visual.keywords.map((item) => `<span class="keyword">${escapeHtml(item)}</span>`).join("")}</div></div>`;
-  }
-  if (visual.kind === "keypoints" || visual.kind === "steps" || visual.kind === "summary") {
-    const marker = visual.kind === "steps" ? "number" : visual.kind === "summary" ? "check" : "dot";
-    return `<div class="visual-card">${head}<ul class="visual-list">${visual.items.map((item, index) => `<li><span class="bullet">${marker === "number" ? String(index + 1).padStart(2, "0") : marker === "check" ? "✓" : "●"}</span><span>${escapeHtml(item)}</span></li>`).join("")}</ul></div>`;
-  }
-  if (visual.kind === "compare") {
-    return `<div class="visual-card">${head}<div class="compare-grid">${renderCompareSide(visual.left)}${renderCompareSide(visual.right)}</div></div>`;
-  }
-  if (visual.kind === "number") {
-    return `<div class="visual-card">${head}<div class="number-value">${escapeHtml(visual.value)}</div><div class="number-label">${escapeHtml(visual.label)}</div></div>`;
-  }
-  return `<div class="visual-card">${head}<div class="quote-mark">“</div><div class="quote-text">${escapeHtml(visual.text)}</div></div>`;
-}
-
-function renderCompareSide(side: { label: string; items: string[] }): string {
-  return `<div class="compare-side"><div class="compare-label">${escapeHtml(side.label)}</div>${side.items.map((item) => `<div class="compare-item">${escapeHtml(item)}</div>`).join("")}</div>`;
-}
-
-function renderCaption(cue: CaptionCue, totalDuration: number): string {
-  const start = Math.max(0, Math.min(totalDuration, cue.startMs / 1_000));
-  const end = Math.max(start + 0.001, Math.min(totalDuration, cue.endMs / 1_000));
-  return `<div id="${escapeHtml(cue.id)}" class="caption-cue clip" data-layout-allow-overlap="true" data-scene="${cue.sceneIndex}" data-start="${start.toFixed(3)}" data-duration="${(end - start).toFixed(3)}" data-track-index="60">${escapeHtml(cue.text)}</div>`;
-}
-
-function visualLabel(kind: VisualSpec["kind"]): string {
-  return ({ title: "TOPIC", keypoints: "KEY POINTS", steps: "STEPS", compare: "COMPARE", number: "NUMBER", quote: "QUOTE", summary: "SUMMARY" } as const)[kind];
-}
-
-function visualIcon(): string {
-  return '<svg class="visual-icon" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="18"></circle><path d="M15 25l6 6 13-15"></path></svg>';
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
-}
+function css(): string { return `@font-face{font-family:NotoJP;src:url("./assets/NotoSansJP.ttf") format("truetype");font-weight:100 900}*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#030711;color:#eef6ff}body{font-family:NotoJP,sans-serif}#root{position:relative;width:1920px;height:1080px;overflow:hidden;background:radial-gradient(circle at 18% 18%,rgba(59,108,255,.18),transparent 34%),radial-gradient(circle at 84% 76%,rgba(255,79,190,.1),transparent 34%),#040916}.grid{position:absolute;inset:-160px;background-image:linear-gradient(rgba(75,133,210,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(75,133,210,.07) 1px,transparent 1px);background-size:64px 64px}.topbar{position:absolute;z-index:90;left:84px;right:84px;top:42px;display:flex;gap:14px;align-items:center;color:#8ea5c4;font-size:19px;letter-spacing:.12em}.topbar b{margin-left:auto}.topbar i{width:18px;height:18px;border-radius:6px;border:2px solid #38e8ff;box-shadow:0 0 18px #38e8ff}.scene{position:absolute;inset:0}.scene-content{position:absolute;inset:0;padding:116px 84px 146px;display:grid;grid-template-columns:600px 1fr;gap:68px;align-items:center;opacity:0}.kicker{display:flex;align-items:center;gap:14px;color:#38e8ff;font-size:21px;letter-spacing:.14em;font-weight:750}.kicker:before{content:"";width:42px;height:3px;background:linear-gradient(90deg,#38e8ff,#ff4fbe)}.headline{font-size:67px;line-height:1.14;font-weight:880;letter-spacing:-.045em;margin-top:24px;text-wrap:balance;overflow-wrap:anywhere}.headline.compact{font-size:59px}.headline.tight{font-size:52px}.supporting{margin-top:25px;color:#afc1d8;font-size:26px;line-height:1.62}.counter{margin-top:28px;color:#6f88a8;font-size:17px;letter-spacing:.12em}.visual-stage{height:690px;position:relative;border:1px solid rgba(126,180,241,.2);border-radius:38px;background:linear-gradient(145deg,rgba(11,27,57,.88),rgba(5,13,30,.68));box-shadow:0 38px 80px rgba(0,0,0,.28);overflow:hidden}.stage-label{position:absolute;left:28px;top:24px;font-size:16px;letter-spacing:.14em;color:#8299b8;z-index:5}.led{position:absolute;right:28px;top:27px;width:9px;height:9px;border-radius:50%;background:#a9ff68;box-shadow:0 0 14px #a9ff68}.diagram,.legacy{position:absolute;inset:76px 42px 38px}.motion-item,.legacy-item{border:1px solid rgba(133,190,250,.28);border-radius:20px;background:rgba(7,21,45,.94);padding:17px 20px;box-shadow:0 16px 34px rgba(0,0,0,.24)}.motion-item strong{display:block;font-size:21px}.motion-item small{display:block;color:#9aafc8;font-size:14px;margin-top:5px}.tone-accent{border-color:#38e8ff}.tone-positive{border-color:#a9ff68}.tone-warning{border-color:#ffb24a}.tone-danger{border-color:#ff567d}.nodes{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.node{position:relative}.node>b{position:absolute;right:10px;top:8px;color:#8ba3c3;z-index:2}.edges{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:20px}.edge{height:48px;display:grid;grid-template-columns:22px 1fr 22px auto;gap:8px;align-items:center;padding:0 12px;border-radius:13px;background:#09172f;color:#9ab0cb}.edge i,.timeline-line,.gate-line,.branch-lines i{height:3px;background:linear-gradient(90deg,#38e8ff,#9c63ff);transform-origin:left}.edge-removed i{background:#ff567d}.migration{display:grid;grid-template-columns:1fr 70px 1fr;gap:15px;align-items:center}.migration-group{min-height:410px;display:flex;flex-direction:column;justify-content:center;gap:14px}.migration-group>span{color:#91a6c0}.migration-group>strong{padding:15px;background:rgba(255,255,255,.05);border-radius:13px}.before{border-color:#ff567d}.after{border-color:#38e8ff}.arrow{font-size:48px;color:#38e8ff;text-align:center}.orbit{display:grid;place-items:center}.orbit-ring{position:absolute;width:500px;height:500px;border:4px dashed rgba(56,232,255,.5);border-radius:50%;transform-origin:center}.orbit-grid{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;gap:210px 350px;align-content:center}.orbit-item{position:relative}.orbit-item>b{position:absolute;right:8px;top:7px;color:#8ba3c3;z-index:2}.orbit-center{width:185px;height:96px;border-radius:50px;background:linear-gradient(135deg,#38e8ff,#3b6cff);display:grid;place-items:center;color:#031020;font-weight:900;z-index:2}.orbit .token{position:absolute;top:30px;width:36px;height:36px;border-radius:11px;background:#ff4fbe}.timeline{display:flex;align-items:center;gap:10px}.timeline-line{position:absolute;left:20px;right:20px;top:50%}.timeline-item{flex:1;z-index:2}.timeline-item>b{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:#38e8ff;color:#031020;margin:0 auto 15px}.timeline-item .motion-item{min-height:145px;text-align:center}.branch{display:grid;grid-template-columns:220px 100px 1fr;align-items:center}.source .motion-item{min-height:145px;display:flex;flex-direction:column;justify-content:center;border-color:#38e8ff}.branch-lines{height:410px;display:flex;flex-direction:column;justify-content:space-around}.paths{display:grid;gap:14px}.layers{display:flex;flex-direction:column;gap:13px;padding:0 80px}.layer{height:110px}.focus{border-color:#38e8ff!important}.zoom-frame{position:absolute;left:55px;right:55px;top:225px;height:140px;border:3px solid #38e8ff;border-radius:25px}.gates{display:grid;place-items:center}.gate-line{position:absolute;left:20px;right:20px;top:50%}.gate-list{display:flex;gap:16px;z-index:2}.gate{width:180px;position:relative}.gate>b{position:absolute;right:8px;top:7px;color:#8ba3c3;z-index:3}.gate .motion-item{height:260px;padding-top:90px;text-align:center}.gates .token{position:absolute;left:15px;top:270px;width:62px;height:52px;border-radius:14px;background:#38e8ff;color:#031020;display:grid;place-items:center;font-weight:900;z-index:4}.result{position:absolute;right:0;top:235px;width:115px;height:115px;border-radius:60px;border:2px solid #a9ff68;color:#a9ff68;display:grid;place-items:center;text-align:center;font-size:28px}.result small{font-size:12px}.blocked{position:absolute;bottom:6px;color:#ff8da8}.metric{display:grid;place-items:center}.metric-ring{position:absolute;width:450px;height:450px;border:4px dashed rgba(56,232,255,.45);border-radius:50%;transform-origin:center}.metric-core{width:350px;height:250px;border-radius:130px;display:grid;place-items:center;text-align:center}.metric-core strong{font-size:82px;color:#38e8ff}.metric-compare{position:absolute;right:40px;bottom:45px;color:#ff9ed8}.legacy{display:flex;flex-wrap:wrap;gap:16px;align-content:center}.legacy.list{display:grid}.legacy.list .legacy-item{display:flex;gap:18px;font-size:25px}.legacy.compare{display:grid;grid-template-columns:1fr 1fr}.legacy.compare .legacy-item{display:flex;flex-direction:column;gap:12px;font-size:22px}.pill{border-radius:999px;font-size:27px}.number{width:100%;text-align:center}.number b{display:block;font-size:92px;color:#38e8ff}.quote{font-size:32px;line-height:1.55}.caption-cue{position:absolute;left:210px;right:210px;bottom:43px;min-height:94px;padding:17px 38px;border-radius:24px;background:rgba(3,9,21,.94);border:1px solid rgba(119,183,248,.34);font-size:35px;font-weight:720;text-align:center;display:grid;place-items:center;z-index:70}.caption-inner{display:block}.progress{position:absolute;z-index:100;left:0;right:0;bottom:0;height:8px;background:rgba(255,255,255,.06)}.progress-fill{width:100%;height:100%;transform-origin:left;background:linear-gradient(90deg,#38e8ff,#3b6cff,#ff4fbe)}`; }

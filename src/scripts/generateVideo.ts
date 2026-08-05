@@ -4,12 +4,18 @@ import { generateVideoLocally, uploadVideoOutputs } from "../domains/video/video
 const args = process.argv.slice(2);
 const urlIndex = args.indexOf("--url");
 const url = urlIndex >= 0 ? args[urlIndex + 1] : args.find((value) => !value.startsWith("--"));
+const motionIndex = args.indexOf("--motion");
+const motionMode = motionIndex >= 0 ? args[motionIndex + 1] : undefined;
+if (motionMode !== undefined && motionMode !== "basic" && motionMode !== "rich") {
+  console.error("--motion must be basic or rich");
+  process.exit(1);
+}
 if (!url) {
-  console.error("Usage: npm run video:generate -- --url <article-url> [--upload]");
+  console.error("Usage: npm run video:generate -- --url <article-url> [--motion basic|rich] [--upload]");
   process.exit(1);
 }
 
-const job = await createVideoJob({ url, requestedBy: "cli", executionMode: "cli" });
+const job = await createVideoJob({ url, motionMode, requestedBy: "cli", executionMode: "cli" });
 try {
   const generated = await generateVideoLocally(job);
   if (args.includes("--upload")) {

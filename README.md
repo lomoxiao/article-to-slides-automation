@@ -170,4 +170,6 @@ Firebaseの`slides`と`manga`は共通の`pending | processing | action_required
 
 記事から55〜65秒・1080pのMP4をローカル生成し、Google Driveへ保存する機能はfeature flagで無効化されています。初期セットアップ、実CLI契約、未完了のPhase 0受入項目は [docs/video-spike.md](docs/video-spike.md) を参照してください。
 
-TTSは公式Kokoro＋Misaki日本語G2P＋完全版UniDicへ一本化しています。初回は `powershell -ExecutionPolicy Bypass -File scripts/setup-video-tts.ps1`、`npm run video:browser:ensure` の順で実行してください。日本語音声付き固定テンプレートの再生成は `npm run video:template:smoke`、TTSと意味単位字幕の受入スモークは `npm run video:preflight:smoke`、通常診断は `npm run video:preflight`、単体生成は `npm run video:generate -- --url <URL>` です。本番判定は [docs/video-production-readiness.md](docs/video-production-readiness.md) を参照し、Rulesデプロイと実アカウントE2Eが終わるまで `VIDEO_GENERATION_ENABLED=false` を維持してください。
+TTSは公式Kokoro＋Misaki日本語G2P＋完全版UniDicへ一本化しています。初回は `powershell -ExecutionPolicy Bypass -File scripts/setup-video-tts.ps1`、`npm run video:browser:ensure` の順で実行してください。UTF-8日本語ラベル保持検査付きリッチ固定テンプレートの再生成は `npm run video:template:smoke`、TTSと意味単位字幕の受入スモークは `npm run video:preflight:smoke`、通常診断は `npm run video:preflight`、単体生成は `npm run video:generate -- --url <URL> [--motion basic|rich]` です。Slackの `[video-generate]` でも同じ `--motion` を使用できます。
+
+GSAPリッチ図解は `VIDEO_RICH_MOTION_ENABLED=true` で有効化します。新規ジョブの要求値は `rich`、既存ジョブの再開は互換性のため `basic` です。リッチ図解のストーリーボード生成またはHyperFrames strict検査だけが失敗した場合は、同じ音声・字幕を使って自動的にbasic版へ退避し、理由をmanifestへ記録します。本番判定は [docs/video-production-readiness.md](docs/video-production-readiness.md) を参照し、Rulesデプロイと実アカウントE2Eが終わるまで `VIDEO_GENERATION_ENABLED=false` を維持してください。
