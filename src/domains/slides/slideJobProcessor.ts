@@ -20,9 +20,11 @@ import {
 } from "./jobStore.js";
 import {
   clearArtifactDiagnostic,
+  getInstapaperDelivery,
   upsertArticleSource,
   upsertArticleTldr,
   upsertArtifactDiagnostic,
+  upsertInstapaperDelivery,
   upsertSlideArtifact
 } from "../../shared/firebaseArticleStore.js";
 import { recordSessionExpired } from "../../shared/sessionStatusStore.js";
@@ -32,6 +34,7 @@ import {
 } from "../../shared/slackNotifier.js";
 import { createCodexPrompt } from "./slidePrompts.js";
 import { getSlideDataHeadline, getSlideDataTitle, normalizeTldr } from "./slideDataMeta.js";
+import { deliverReadingEditionToInstapaper } from "../reader/instapaperDelivery.js";
 
 type ProcessSlideJobOptions = {
   slideDataPath?: string;
@@ -154,12 +157,20 @@ export async function processSlideJob(
       logger.warn(`Slack completion notification failed: ${message}`);
     }
 
-    // TLDRはbest-effort: 失敗してもジョブ成功は変えない
+    // TLDRとInstapaper送信はbest-effort: 失敗してもジョブ成功は変えない
+    let tldr: string | undefined;
     try {
-      await generateAndStoreTldr(completedJob, logger);
+      tldr = await generateAndStoreTldr(completedJob, logger);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.warn(`TLDR generation failed (best-effort): ${message}`);
+    }
+
+    try {
+      await deliverCompletedJobToInstapaper(completedJob, renderedSlideData, tldr, logger);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`Instapaper delivery failed (best-effort): ${message}`);
     }
 
     return {
@@ -307,11 +318,14 @@ function getPrimaryJobUrl(job: SlideJob): string | undefined {
 
 const TLDR_SOURCE_MAX_LENGTH = 20_000;
 
-async function generateAndStoreTldr(job: SlideJob, logger: Pick<Console, "log" | "warn">): Promise<void> {
+async function generateAndStoreTldr(
+  job: SlideJob,
+  logger: Pick<Console, "log" | "warn">
+): Promise<string | undefined> {
   const sourceUrl = getPrimaryJobUrl(job);
-  if (!sourceUrl || job.researchPrompt) return;
+  if (!sourceUrl || job.researchPrompt) return undefined;
   const sourcePath = path.join(job.completedDir, "source.txt");
-  if (!existsSync(sourcePath)) return;
+  if (!existsSync(sourcePath)) return undefined;
 
   const source = (await readFile(sourcePath, "utf8")).slice(0, TLDR_SOURCE_MAX_LENGTH);
   const prompt = `以下の記事本文を、日本語の箇条書き3行で要約してください。
@@ -337,4 +351,72 @@ ${source}
   }
   await upsertArticleTldr(sourceUrl, tldr);
   logger.log(`TLDR saved: ${sourceUrl}`);
+  return tldr;
+}
+
+async function deliverCompletedJobToInstapaper(
+  job: SlideJob,
+  slideData: unknown[],
+  tldr: string | undefined,
+  logger: Pick<Console, "log" | "warn">
+): Promise<void> {
+  if (!config.instapaper.autoSend) return;
+
+  const sourceUrl = getPrimaryJobUrl(job);
+  if (!sourceUrl || job.researchPrompt) return;
+
+  const {
+    consumerKey,
+    consumerSecret,
+    accessToken,
+    accessTokenSecret,
+    readerBaseUrl
+  } = config.instapaper;
+  const missing = [
+    ["INSTAPAPER_CONSUMER_KEY", consumerKey],
+    ["INSTAPAPER_CONSUMER_SECRET", consumerSecret],
+    ["INSTAPAPER_ACCESS_TOKEN", accessToken],
+    ["INSTAPAPER_ACCESS_TOKEN_SECRET", accessTokenSecret]
+  ].filter(([, value]) => !value).map(([name]) => name);
+  if (missing.length) {
+    logger.warn(`Instapaper auto-send skipped; missing ${missing.join(", ")}`);
+    return;
+  }
+
+  const sourcePath = path.join(job.completedDir, "source.txt");
+  if (!existsSync(sourcePath)) {
+    logger.warn("Instapaper auto-send skipped; completed source.txt was not found");
+    return;
+  }
+
+  const markdown = await readFile(sourcePath, "utf8");
+  const title = getSlideDataTitle(slideData) ?? job.focus ?? "保存済み記事";
+  const result = await deliverReadingEditionToInstapaper(
+    {
+      articleUrl: sourceUrl,
+      title,
+      markdown,
+      tldr,
+      extractedAt: job.completedAt ?? job.updatedAt
+    },
+    {
+      readerBaseUrl,
+      credentials: {
+        consumerKey: consumerKey!,
+        consumerSecret: consumerSecret!,
+        accessToken: accessToken!,
+        accessTokenSecret: accessTokenSecret!
+      }
+    },
+    {
+      get: getInstapaperDelivery,
+      put: upsertInstapaperDelivery
+    }
+  );
+
+  if (result.status === "skipped") {
+    logger.log(`Instapaper unchanged; skipped: ${result.readerUrl}`);
+  } else {
+    logger.log(`Instapaper saved: ${result.readerUrl} (bookmark ${result.bookmarkId})`);
+  }
 }

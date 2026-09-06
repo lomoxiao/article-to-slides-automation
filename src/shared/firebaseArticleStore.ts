@@ -368,6 +368,36 @@ export async function upsertArticleTldr(articleUrl: string, tldr: string): Promi
   await ref.update({ tldr: value.slice(0, MAX_TLDR_LENGTH) });
 }
 
+export type InstapaperDeliveryRecord = {
+  status: "processing" | "completed" | "failed";
+  contentHash: string;
+  readerUrl: string;
+  bookmarkId?: string;
+  errorCode?: string;
+  updatedAt: string;
+};
+
+/** Instapaper再送判定用の状態。資格情報や本文は保存しない。 */
+export async function getInstapaperDelivery(
+  articleUrl: string
+): Promise<InstapaperDeliveryRecord | undefined> {
+  const identity = createArticleIdentity(articleUrl);
+  const snapshot = await getDb().ref(`/instapaperDeliveries/${identity.articleId}`).get();
+  return snapshot.exists() ? (snapshot.val() as InstapaperDeliveryRecord) : undefined;
+}
+
+/** Instapaper送信結果をviewer非公開の運用領域へ保存する。 */
+export async function upsertInstapaperDelivery(
+  articleUrl: string,
+  record: Omit<InstapaperDeliveryRecord, "updatedAt">
+): Promise<void> {
+  const identity = createArticleIdentity(articleUrl);
+  await getDb().ref(`/instapaperDeliveries/${identity.articleId}`).set({
+    ...record,
+    updatedAt: nowJstIso()
+  });
+}
+
 export type ArtifactDiagnosticInput = {
   articleUrl: string;
   artifactType: "slides" | "manga" | "video";

@@ -124,7 +124,14 @@ const envSchema = z.object({
   WEB_LOGIN_REQUIRED_DOMAINS: z.preprocess(
     (v) => (typeof v === "string" ? v : ""),
     z.string().default("")
-  )
+  ),
+  // Kobo向けReaderをInstapaper Full APIへ送る後処理。明示的に有効化するまで送信しない。
+  INSTAPAPER_AUTO_SEND: envBool(false),
+  INSTAPAPER_CONSUMER_KEY: z.string().optional(),
+  INSTAPAPER_CONSUMER_SECRET: z.string().optional(),
+  INSTAPAPER_ACCESS_TOKEN: z.string().optional(),
+  INSTAPAPER_ACCESS_TOKEN_SECRET: z.string().optional(),
+  READER_BASE_URL: z.string().url().default("https://lomoxiao.github.io/multimodal-article-viewer/")
 });
 
 const env = envSchema.parse(process.env);
@@ -203,6 +210,14 @@ export const config = {
     xHeadless: env.X_HEADLESS,
     sessionsDir: env.WEB_SESSIONS_DIR,
     loginRequiredDomains: env.WEB_LOGIN_REQUIRED_DOMAINS
+  },
+  instapaper: {
+    autoSend: env.INSTAPAPER_AUTO_SEND,
+    consumerKey: env.INSTAPAPER_CONSUMER_KEY,
+    consumerSecret: env.INSTAPAPER_CONSUMER_SECRET,
+    accessToken: env.INSTAPAPER_ACCESS_TOKEN,
+    accessTokenSecret: env.INSTAPAPER_ACCESS_TOKEN_SECRET,
+    readerBaseUrl: env.READER_BASE_URL
   }
 } as const;
 
