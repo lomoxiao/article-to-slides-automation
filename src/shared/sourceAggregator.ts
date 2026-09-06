@@ -6,6 +6,8 @@ import { loadPaginationDomainRules, recordPaginationSuccess } from "./pagination
 export type MergedSourceContent = {
   sources: Array<{ url: string; title: string; body: string }>;
   mergedBody: string;
+  readerFormatVersion?: number;
+  readerFormatMethod?: string;
 };
 
 const MAX_BODY_LENGTH = 60_000;
@@ -60,13 +62,23 @@ export function buildDebugExtractorOptions(): ExtractorOptions {
  */
 export async function fetchSourceContent(url: string): Promise<SourceContent> {
   const content = await extractContent({ url }, buildExtractorOptions());
+  const readerFormatVersion =
+    typeof content.metadata.readerFormatVersion === "number"
+      ? content.metadata.readerFormatVersion
+      : undefined;
+  const readerFormatMethod =
+    typeof content.metadata.readerFormatMethod === "string"
+      ? content.metadata.readerFormatMethod
+      : undefined;
 
   return {
     url: content.url,
     title: content.title,
-    text: content.markdown.slice(0, MAX_BODY_LENGTH),
+    text: truncateMarkdown(content.markdown, MAX_BODY_LENGTH),
     author: content.metadata.author,
-    publishedAt: content.metadata.publishedAt
+    publishedAt: content.metadata.publishedAt,
+    readerFormatVersion,
+    readerFormatMethod
   };
 }
 
@@ -130,8 +142,25 @@ function mergeSources(sources: Array<{ url: string; title: string; body: string 
     sources,
     mergedBody: sources
       .map((source, index) => `# Source ${index + 1}: ${source.title}\nURL: ${source.url}\n\n${source.body}`)
-      .join("\n\n---\n\n")
+      .join("\n\n---\n\n"),
+    readerFormatVersion: 2,
+    readerFormatMethod: "multi_source"
   };
+}
+
+export function truncateMarkdown(markdown: string, maxLength: number): string {
+  if (markdown.length <= maxLength) return markdown;
+  const notice = "\n\n[本文は文字数上限のため省略されました]";
+  const limit = Math.max(0, maxLength - notice.length);
+  const blockBoundary = markdown.lastIndexOf("\n\n", limit);
+  const lineBoundary = markdown.lastIndexOf("\n", limit);
+  const cutoff =
+    blockBoundary >= Math.floor(limit * 0.75)
+      ? blockBoundary
+      : lineBoundary >= Math.floor(limit * 0.75)
+        ? lineBoundary
+        : limit;
+  return markdown.slice(0, cutoff).trimEnd() + notice;
 }
 
 type TavilySearchResponse = {

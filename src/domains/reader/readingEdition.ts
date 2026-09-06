@@ -61,7 +61,7 @@ export function renderReadingEdition(input: ReadingEditionInput): string {
   </style>
 </head>
 <body>
-<article data-reader-format="1">
+<article data-reader-format="2">
   <header><h1>${escapeHtml(title)}</h1>${meta}</header>
   ${tldr}
   <main>${body || "<p>本文がありません。</p>"}</main>
@@ -96,6 +96,7 @@ function renderMarkdownBlocks(markdown: string): string {
   let listType: "ul" | "ol" | undefined;
   let listItems: string[] = [];
   let codeLines: string[] | undefined;
+  let quoteLines: string[] = [];
 
   const flushParagraph = () => {
     if (!paragraph.length) return;
@@ -108,9 +109,19 @@ function renderMarkdownBlocks(markdown: string): string {
     listType = undefined;
     listItems = [];
   };
+  const flushQuote = () => {
+    if (!quoteLines.length) return;
+    output.push(
+      "<blockquote><p>" +
+        quoteLines.map(escapeHtml).join("<br>") +
+        "</p></blockquote>"
+    );
+    quoteLines = [];
+  };
   const flushAll = () => {
     flushParagraph();
     flushList();
+    flushQuote();
   };
 
   for (const rawLine of markdown.replace(/\r\n/g, "\n").split("\n")) {
@@ -133,6 +144,14 @@ function renderMarkdownBlocks(markdown: string): string {
       flushAll();
       continue;
     }
+    const quote = line.match(/^>\s?(.+)$/);
+    if (quote) {
+      flushParagraph();
+      flushList();
+      quoteLines.push(quote[1]);
+      continue;
+    }
+    flushQuote();
     const heading = line.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
       flushAll();
@@ -153,12 +172,6 @@ function renderMarkdownBlocks(markdown: string): string {
       if (listType && listType !== nextType) flushList();
       listType = nextType;
       listItems.push((unordered ?? ordered)?.[1] ?? "");
-      continue;
-    }
-    const quote = line.match(/^>\s?(.+)$/);
-    if (quote) {
-      flushAll();
-      output.push(`<blockquote><p>${escapeHtml(quote[1])}</p></blockquote>`);
       continue;
     }
     flushList();

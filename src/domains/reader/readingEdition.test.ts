@@ -12,7 +12,7 @@ test("renders a semantic Japanese reading edition with TLDR and source", () => {
   });
 
   assert.match(html, /<html lang="ja">/);
-  assert.match(html, /<article data-reader-format="1">/);
+  assert.match(html, /<article data-reader-format="2">/);
   assert.match(html, /<h1>夜に読む記事<\/h1>/);
   assert.match(html, /<h2 id="reader-summary-title">3行要約<\/h2>/);
   assert.match(html, /<li>要点その3<\/li>/);
@@ -52,6 +52,18 @@ test("renders ordered lists, quotes, and fenced code without raw markup", () => 
   assert.match(html, /<ol><li>一番<\/li><li>二番<\/li><\/ol>/);
   assert.match(html, /<blockquote><p>引用<\/p><\/blockquote>/);
   assert.match(html, /<pre><code>&lt;strong&gt;code&lt;\/strong&gt;<\/code><\/pre>/);
+});
+
+test("groups consecutive quote lines into one readable quote block", () => {
+  const html = renderReadingEdition({
+    title: "引用",
+    markdown: "> 1行目\n> 2行目\n> 3行目"
+  });
+
+  assert.match(
+    html,
+    /<blockquote><p>1行目<br>2行目<br>3行目<\/p><\/blockquote>/
+  );
 });
 
 test("limits TLDR to three non-empty items", () => {

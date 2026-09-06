@@ -4,6 +4,8 @@ export type SourceContent = {
   author?: string;
   publishedAt?: string;
   text: string;
+  readerFormatVersion?: number;
+  readerFormatMethod?: string;
 };
 
 export type SlideOutline = {

@@ -53,7 +53,7 @@ test("URL+content形式でReaderパーマリンクとKobo向け本文を送る",
 
   assert.equal(result.status, "sent");
   assert.equal(sent?.url, buildReaderUrl(config.readerBaseUrl, input.articleUrl));
-  assert.match(sent?.content ?? "", /data-reader-format="1"/);
+  assert.match(sent?.content ?? "", /data-reader-format="2"/);
   assert.match(sent?.content ?? "", /元記事を開く/);
   assert.deepEqual(state.writes.map((record) => record.status), ["processing", "completed"]);
   assert.equal(state.current?.bookmarkId, "123");

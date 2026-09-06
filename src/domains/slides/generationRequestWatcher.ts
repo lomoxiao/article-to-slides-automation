@@ -134,7 +134,10 @@ async function handleRequest(requestId: string, logger: Pick<Console, "log" | "w
       title,
       registeredFrom: "viewer-text"
     });
-    await upsertArticleSource(identity.canonicalUrl, request.text);
+    await upsertArticleSource(identity.canonicalUrl, request.text, {
+      version: 2,
+      method: "provided_text"
+    });
 
     if (request.video) {
       await enqueueVideoGeneration({

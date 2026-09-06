@@ -249,7 +249,10 @@ async function prepareSlideDataGeneration(job: SlideJob, processingDir: string, 
   // リーダービュー用に抽出本文を保存(best-effort。researchは対象URLがないため対象外)
   const sourceUrl = getPrimaryJobUrl(job);
   if (sourceUrl && !job.researchPrompt) {
-    upsertArticleSource(sourceUrl, content.mergedBody).catch((error) => {
+    upsertArticleSource(sourceUrl, content.mergedBody, {
+      version: content.readerFormatVersion,
+      method: content.readerFormatMethod
+    }).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`article source persistence failed: ${message}`);
     });
@@ -275,7 +278,9 @@ async function fetchContentForJob(job: SlideJob): Promise<MergedSourceContent> {
     const title = job.sourceTitle || job.sourceText.trim().split("\n")[0].slice(0, 80) || "テキスト投入";
     return {
       sources: [{ url: getPrimaryJobUrl(job) ?? "text", title, body }],
-      mergedBody: body
+      mergedBody: body,
+      readerFormatVersion: 2,
+      readerFormatMethod: "provided_text"
     };
   }
 
@@ -291,7 +296,9 @@ async function fetchContentForJob(job: SlideJob): Promise<MergedSourceContent> {
     const source = await fetchSourceContent(urls[0]);
     return {
       sources: [{ url: source.url, title: source.title, body: source.text }],
-      mergedBody: source.text
+      mergedBody: source.text,
+      readerFormatVersion: source.readerFormatVersion,
+      readerFormatMethod: source.readerFormatMethod
     };
   }
 

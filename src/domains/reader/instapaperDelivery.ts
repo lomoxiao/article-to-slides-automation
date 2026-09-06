@@ -60,7 +60,7 @@ export async function deliverReadingEditionToInstapaper(
   // いずれかが変わった時だけInstapaperを更新する。
   const contentHash = createHash("sha256")
     .update(JSON.stringify({
-      format: 1,
+      format: 2,
       readerUrl,
       articleUrl: input.articleUrl,
       title: input.title,

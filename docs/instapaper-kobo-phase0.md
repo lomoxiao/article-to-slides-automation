@@ -92,3 +92,27 @@ READER_BASE_URL=https://lomoxiao.github.io/multimodal-article-viewer/
 ```
 
 4つのOAuth資格情報がそろっていない場合は送信をスキップします。`READER_BASE_URL`を変更すると、同じ本文でも新しいReader URLとして再送されます。
+
+## 既存記事を読みやすい本文へ更新する
+
+Web記事はReadabilityが保持したHTML構造から、安全なMarkdownへ変換します。見出し、段落、箇条書き、引用、コード、区切り線を残し、HTML構造が得られない本文は句点を基準に段落へ再構成します。語句の順番や内容は変更しません。
+
+最初に、外部状態を変えない`preview`で抽出結果の統計を確認します。モード指定は必須で、誤って更新コマンドとして動くことを防いでいます。
+
+```powershell
+npm run reader:refresh -- preview https://example.com/article
+```
+
+Firebaseの保存済み本文だけを更新する場合:
+
+```powershell
+npm run reader:refresh -- update https://example.com/article
+```
+
+Firebaseを更新し、同じReader URLの記事をInstapaperへ再送する場合:
+
+```powershell
+npm run reader:refresh -- send https://example.com/article
+```
+
+`send`はInstapaper上の外部状態を更新するため、Koboで再確認するときだけ明示的に使います。構造化形式は`formatVersion: 2`として保存され、旧形式で送った記事も本文ハッシュが変わるため再送対象になります。

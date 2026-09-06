@@ -344,12 +344,31 @@ export function shouldPreserveManualArtifact(artifact: ExistingArtifact | undefi
 const MAX_ARTICLE_SOURCE_LENGTH = 150_000;
 
 /** 抽出/投入された本文をリーダービュー用に保存する。viewerからは読み取り専用。 */
-export async function upsertArticleSource(articleUrl: string, markdown: string): Promise<void> {
+export async function upsertArticleSource(
+  articleUrl: string,
+  markdown: string,
+  format: { version?: number; method?: string } = {}
+): Promise<void> {
   const identity = createArticleIdentity(articleUrl);
   await getDb().ref(`/articleSources/${identity.articleId}`).set({
     markdown: markdown.slice(0, MAX_ARTICLE_SOURCE_LENGTH),
-    extractedAt: nowJstIso()
+    extractedAt: nowJstIso(),
+    ...(format.version !== undefined ? { formatVersion: format.version } : {}),
+    ...(format.method ? { formatMethod: format.method.slice(0, 64) } : {})
   });
+}
+
+export async function getArticleReaderMetadata(
+  articleUrl: string
+): Promise<{ title?: string; tldr?: string }> {
+  const identity = createArticleIdentity(articleUrl);
+  const snapshot = await getDb().ref(`/articles/${identity.articleId}`).get();
+  if (!snapshot.exists()) return {};
+  const value = snapshot.val() as { title?: unknown; tldr?: unknown };
+  return {
+    title: typeof value.title === "string" ? value.title : undefined,
+    tldr: typeof value.tldr === "string" ? value.tldr : undefined
+  };
 }
 
 const MAX_TLDR_LENGTH = 1000;

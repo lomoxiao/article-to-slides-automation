@@ -16,6 +16,7 @@
     "instapaper:poc": "tsx src/scripts/instapaperPoc.ts",
     "instapaper:poc:dry-run": "tsx src/scripts/instapaperPoc.ts --dry-run",
     "instapaper:poc:private": "tsx src/scripts/instapaperPoc.ts --mode private",
+    "reader:refresh": "tsx src/scripts/readerRefresh.ts",
     "manga:outline": "tsx src/scripts/articleToMangaOutline.ts",
     "manga:check": "tsx src/scripts/checkMangaTemplates.ts",
     "manga:resume": "tsx src/scripts/resumeMangaJob.ts",
