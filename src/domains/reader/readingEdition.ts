@@ -4,13 +4,30 @@ export type ReadingEditionInput = {
   tldr?: string;
   sourceUrl?: string;
   extractedAt?: string;
+  /**
+   * 既定では無効。Vault の成果物のように Markdown の表現力を活かしたい入力でのみ
+   * 明示的に有効化する。既存の Web 記事経路は features を渡さないため、
+   * 出力は従来と 1 バイトも変わらない。
+   */
+  features?: ReadingEditionFeatures;
+};
+
+export type ReadingEditionFeatures = {
+  /** 表組みと、太字・コード・リンクのインライン記法を解釈する。 */
+  richText?: boolean;
+  /**
+   * 表の描画形式。既定は "table"。
+   * Instapaper のパーサは table/tbody/tr/td を除去し thead/th だけ残すため、
+   * Instapaper 経由で読む場合は "list"（行ごとの入れ子の箇条書き）を使う。
+   */
+  tableLayout?: "table" | "list";
 };
 
 export function renderReadingEdition(input: ReadingEditionInput): string {
   const title = input.title.trim() || "保存済み記事";
   const sourceUrl = normalizeHttpUrl(input.sourceUrl);
   const tldrItems = parseTldr(input.tldr);
-  const body = renderMarkdownBlocks(input.markdown);
+  const body = renderMarkdownBlocks(input.markdown, input.features ?? {});
   const meta = input.extractedAt
     ? `<p class="reader-meta"><span>保存日時</span> ${escapeHtml(input.extractedAt)}</p>`
     : "";
@@ -22,6 +39,24 @@ export function renderReadingEdition(input: ReadingEditionInput): string {
     : "";
   const source = sourceUrl
     ? `<footer class="reader-source"><a href="${escapeHtml(sourceUrl)}">元記事を開く</a></footer>`
+    : "";
+  // 表組みを使うときだけスタイルを足す。features を渡さない既存の呼び出しでは
+  // 空文字になるため、出力は従来と完全に一致する。
+  const richTextStyle = input.features?.richText
+    ? `
+  <style>
+    .reader-table { margin: 0 0 1.4rem; }
+    .reader-table table { width: 100%; border-collapse: collapse; font-size: .82em; line-height: 1.55; }
+    .reader-table th, .reader-table td { padding: .35em .5em; border: 1px solid #b8b4aa; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+    .reader-table th { font-weight: 700; }
+    .reader-table-list { padding-left: 1.2em; }
+    .reader-table-list > li { margin: 0 0 .8em; }
+    .reader-table-list ul { padding-left: 1.2em; margin: .2em 0 0; }
+    .reader-table-list ul li { margin: 0; }
+    @media (prefers-color-scheme: dark) {
+      .reader-table th, .reader-table td { border-color: #55534e; }
+    }
+  </style>`
     : "";
 
   return `<!doctype html>
@@ -58,7 +93,7 @@ export function renderReadingEdition(input: ReadingEditionInput): string {
       blockquote, .reader-meta { color: #bbb7ad; }
       .reader-summary { border-color: #66635b; }
     }
-  </style>
+  </style>${richTextStyle}
 </head>
 <body>
 <article data-reader-format="2">
@@ -90,22 +125,26 @@ function normalizeHttpUrl(value: string | undefined): string | undefined {
   }
 }
 
-function renderMarkdownBlocks(markdown: string): string {
+function renderMarkdownBlocks(markdown: string, features: ReadingEditionFeatures): string {
+  const rich = features.richText === true;
+  const tableLayout = features.tableLayout ?? "table";
+  const inline = (value: string): string => (rich ? renderInline(value) : escapeHtml(value));
   const output: string[] = [];
   let paragraph: string[] = [];
   let listType: "ul" | "ol" | undefined;
   let listItems: string[] = [];
   let codeLines: string[] | undefined;
   let quoteLines: string[] = [];
+  let tableLines: string[] = [];
 
   const flushParagraph = () => {
     if (!paragraph.length) return;
-    output.push(`<p>${paragraph.map(escapeHtml).join("<br>")}</p>`);
+    output.push(`<p>${paragraph.map(inline).join("<br>")}</p>`);
     paragraph = [];
   };
   const flushList = () => {
     if (!listType || !listItems.length) return;
-    output.push(`<${listType}>${listItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</${listType}>`);
+    output.push(`<${listType}>${listItems.map((item) => `<li>${inline(item)}</li>`).join("")}</${listType}>`);
     listType = undefined;
     listItems = [];
   };
@@ -113,15 +152,23 @@ function renderMarkdownBlocks(markdown: string): string {
     if (!quoteLines.length) return;
     output.push(
       "<blockquote><p>" +
-        quoteLines.map(escapeHtml).join("<br>") +
+        quoteLines.map(inline).join("<br>") +
         "</p></blockquote>"
     );
     quoteLines = [];
+  };
+  const flushTable = () => {
+    if (!tableLines.length) return;
+    const rendered = renderTable(tableLines, inline, tableLayout);
+    // 表として解釈できなかった行は、従来どおり段落として残す。
+    output.push(rendered ?? `<p>${tableLines.map(inline).join("<br>")}</p>`);
+    tableLines = [];
   };
   const flushAll = () => {
     flushParagraph();
     flushList();
     flushQuote();
+    flushTable();
   };
 
   for (const rawLine of markdown.replace(/\r\n/g, "\n").split("\n")) {
@@ -144,6 +191,14 @@ function renderMarkdownBlocks(markdown: string): string {
       flushAll();
       continue;
     }
+    if (rich && /^\|.*\|$/.test(line)) {
+      flushParagraph();
+      flushList();
+      flushQuote();
+      tableLines.push(line);
+      continue;
+    }
+    flushTable();
     const quote = line.match(/^>\s?(.+)$/);
     if (quote) {
       flushParagraph();
@@ -156,7 +211,7 @@ function renderMarkdownBlocks(markdown: string): string {
     if (heading) {
       flushAll();
       const level = Math.min(heading[1].length + 1, 4);
-      output.push(`<h${level}>${escapeHtml(heading[2])}</h${level}>`);
+      output.push(`<h${level}>${inline(heading[2])}</h${level}>`);
       continue;
     }
     if (/^([-*_])(?:\s*\1){2,}$/.test(line)) {
@@ -189,4 +244,102 @@ function escapeHtml(value: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+/**
+ * GFM 風の表を <table> へ変換する。ヘッダ行と区切り行（|---|---|）が揃っている場合だけ
+ * 表として扱い、それ以外は null を返して呼び出し側の段落フォールバックに委ねる。
+ */
+function renderTable(
+  lines: string[],
+  inline: (value: string) => string,
+  layout: "table" | "list"
+): string | undefined {
+  if (lines.length < 2) return undefined;
+  const cells = (line: string): string[] =>
+    line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim());
+  const header = cells(lines[0]);
+  const divider = cells(lines[1]);
+  if (!header.length || divider.length !== header.length) return undefined;
+  if (!divider.every((cell) => /^:?-{1,}:?$/.test(cell))) return undefined;
+
+  if (layout === "list") {
+    const rows = lines.slice(2).map((line) => {
+      const row = cells(line);
+      return Array.from({ length: header.length }, (_, index) => row[index] ?? "");
+    });
+    return renderTableAsList(header, rows, inline);
+  }
+
+  const align = divider.map((cell) => {
+    const left = cell.startsWith(":");
+    const right = cell.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "right";
+    return undefined;
+  });
+  const cellAttribute = (index: number): string =>
+    align[index] ? ` style="text-align:${align[index]}"` : "";
+
+  const head = `<thead><tr>${header
+    .map((cell, index) => `<th${cellAttribute(index)}>${inline(cell)}</th>`)
+    .join("")}</tr></thead>`;
+  const bodyRows = lines.slice(2).map((line) => {
+    const row = cells(line);
+    const normalized = Array.from({ length: header.length }, (_, index) => row[index] ?? "");
+    return `<tr>${normalized
+      .map((cell, index) => `<td${cellAttribute(index)}>${inline(cell)}</td>`)
+      .join("")}</tr>`;
+  });
+  const body = bodyRows.length ? `<tbody>${bodyRows.join("")}</tbody>` : "";
+  return `<div class="reader-table"><table>${head}${body}</table></div>`;
+}
+
+/**
+ * 表を行ごとの入れ子の箇条書きにする。先頭列を行の見出しにし、残りの列は
+ * 「列名: 値」の子項目にする。先頭列が "#" の連番なら 2 列目と合わせて
+ * 「1. 見出し」の形にする。空のセルは省く。
+ */
+function renderTableAsList(
+  header: string[],
+  rows: string[][],
+  inline: (value: string) => string
+): string {
+  const numbered = header[0] === "#" && header.length >= 2;
+  const detailStart = numbered ? 2 : 1;
+  const items = rows.map((row) => {
+    const label = numbered ? [row[0], row[1]].filter(Boolean).join(". ") : row[0];
+    const details = header
+      .slice(detailStart)
+      .map((name, offset) => ({ name, value: row[detailStart + offset] }))
+      .filter(({ value }) => value)
+      .map(({ name, value }) => `<li>${inline(name)}: ${inline(value)}</li>`);
+    const nested = details.length ? `<ul>${details.join("")}</ul>` : "";
+    return `<li><strong>${inline(label)}</strong>${nested}</li>`;
+  });
+  return `<ul class="reader-table-list">${items.join("")}</ul>`;
+}
+
+/**
+ * 先にエスケープしてからインライン記法を適用する。エスケープ後の文字列を対象にするため、
+ * 入力に含まれる生の HTML がタグとして復活することはない。
+ */
+function renderInline(value: string): string {
+  let html = escapeHtml(value);
+  html = html.replace(/`([^`]+)`/g, (_match, code: string) => `<code>${code}</code>`);
+  html = html.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (match, text: string, href: string) => {
+    const url = normalizeHttpUrl(unescapeHtml(href));
+    return url ? `<a href="${escapeHtml(url)}">${text}</a>` : match;
+  });
+  html = html.replace(/\*\*([^*]+)\*\*/g, (_match, text: string) => `<strong>${text}</strong>`);
+  return html;
+}
+
+function unescapeHtml(value: string): string {
+  return value
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, ">")
+    .replace(/&lt;/g, "<")
+    .replace(/&amp;/g, "&");
 }

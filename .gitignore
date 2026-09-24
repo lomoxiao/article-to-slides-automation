@@ -29,3 +29,6 @@ codex-preflight.json
 Thumbs.db
 .vscode/
 .idea/
+
+# Instapaper 送信状態（ローカル固有。本文と資格情報は含まない）
+.state/
