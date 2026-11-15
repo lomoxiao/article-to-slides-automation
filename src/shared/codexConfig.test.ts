@@ -13,7 +13,7 @@ test("removes an unknown or malformed top-level service tier", () => {
   const result = sanitizeCodexConfigToml("service_tier = standard # unsupported\nmodel = \"gpt-5.5\"\n");
 
   assert.equal(result.removedServiceTier, "standard");
-  assert.equal(result.content, 'model = "gpt-5.5"\n');
+  assert.equal(result.content, "");
 });
 
 test("preserves supported service tiers", () => {

@@ -3,7 +3,7 @@ import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { config } from "../config.js";
-import { spawnCli } from "./cliProcess.js";
+import { spawnCli, type CliRunResult } from "./cliProcess.js";
 import { copySanitizedCodexConfig } from "./codexConfig.js";
 import { untrustedSourceSecurityConstraints } from "./promptGuards.js";
 
@@ -40,8 +40,9 @@ export async function runCodexImagePrompt(input: RunCodexPromptInput & { imagePa
     imagePaths: [path.resolve(input.imagePath)]
   });
   await writeFile(path.join(input.jobDir, `codex-${input.logLabel}-stdout.log`), result.stdout, "utf8");
-  await writeFile(path.join(input.jobDir, `codex-${input.logLabel}-stderr.log`), result.stderr, "utf8");
-  if (result.exitCode !== 0) throw new Error(`codex image analysis failed with exit code ${result.exitCode}`);
+  const stderrPath = path.join(input.jobDir, `codex-${input.logLabel}-stderr.log`);
+  await writeFile(stderrPath, result.stderr, "utf8");
+  if (result.exitCode !== 0) throw codexExecError(result, stderrPath);
   const output = await readFile(lastMessagePath, "utf8");
   if (!output.trim()) throw new Error("codex image analysis returned an empty result");
   return { result: output, stdout: result.stdout, stderr: result.stderr, codexHome: result.codexHome, lastMessagePath };
@@ -62,7 +63,7 @@ ${untrustedSourceSecurityConstraints(input.slideDataPath)}`;
     await writeFile(stderrPath, result.stderr, "utf8");
 
     if (result.exitCode !== 0) {
-      throw new Error(`codex exec failed with exit code ${result.exitCode}. See ${stderrPath}`);
+      throw codexExecError(result, stderrPath);
     }
 
     const lastMessagePath = path.join(input.jobDir, "codex-last-message.txt");
@@ -98,7 +99,7 @@ export async function runCodexPrompt(input: RunCodexPromptInput): Promise<RunCod
     await writeFile(stderrPath, result.stderr, "utf8");
 
     if (result.exitCode !== 0) {
-      throw new Error(`codex exec failed with exit code ${result.exitCode}. See ${stderrPath}`);
+      throw codexExecError(result, stderrPath);
     }
 
     const lastMessage = await readFile(lastMessagePath, "utf8");
@@ -118,6 +119,18 @@ export async function runCodexPrompt(input: RunCodexPromptInput): Promise<RunCod
     await writeFile(path.join(input.jobDir, `codex-${input.logLabel}-error.log`), `${message}\n`, "utf8");
     throw error;
   }
+}
+
+function isModelUnavailable(result: CliRunResult) {
+  return result.exitCode !== 0 && /^ERROR: .*"code"\s*:\s*"model_not_found"/m.test(result.stderr);
+}
+
+function codexExecError(result: CliRunResult, stderrPath: string) {
+  const finalStderr = result.stderr.split(/^\[codex\] model=/m).at(-1) ?? result.stderr;
+  if (isModelUnavailable({ ...result, stderr: finalStderr })) {
+    return new Error("利用可能な Codex モデルがありません。.env の CODEX_MODEL または CODEX_MODEL_CANDIDATES を確認してください。ログ: " + stderrPath);
+  }
+  return new Error("codex exec failed with exit code " + result.exitCode + ". See " + stderrPath);
 }
 
 function createTextOnlyPrompt(prompt: string) {
@@ -200,13 +213,17 @@ async function runCodexExec(
   options: RunCodexExecOptions = {}
 ): Promise<{ exitCode: number | null; stdout: string; stderr: string; codexHome: string }> {
   const codexHome = await prepareRunnerCodexHome(options.codexHome);
-  const command = resolveCodexCommand(config.codex.cliCommand, codexHome);
+  const command = resolveExternalCodexCommand(config.codex.cliCommand);
   const promptFilePath = options.promptFilePath ?? path.join(jobDir, "codex-exec-input.md");
   const lastMessagePath = options.lastMessagePath ?? path.join(jobDir, "codex-last-message.txt");
   await writeFile(promptFilePath, prompt, "utf8");
 
-  const args = buildCodexExecArgs(options, lastMessagePath);
-  const result = await spawnCli(command, args, {
+  const configuredModel = config.codex.model;
+  const models = configuredModel === "auto" ? [undefined] : configuredModel ? [configuredModel] : config.codex.modelCandidates;
+  if (!models.length) {
+    throw new Error(".env に CODEX_MODEL_CANDIDATES を設定してください。CLI に委任する場合は CODEX_MODEL=auto を指定してください。");
+  }
+  const result = await runCodexModelCandidates(models, (model) => spawnCli(command, buildCodexExecArgs(options, lastMessagePath, model), {
     stdin: prompt,
     timeoutMs: config.codex.execTimeoutMs,
     shell: false,
@@ -215,19 +232,34 @@ async function runCodexExec(
       CODEX_HOME: codexHome
     },
     timeoutError: () => new Error(`codex exec timed out after ${config.codex.execTimeoutMs}ms`)
-  });
+  }));
   return { ...result, codexHome };
 }
 
-export function buildCodexExecArgs(options: RunCodexExecOptions, lastMessagePath: string): string[] {
+export async function runCodexModelCandidates(
+  models: readonly (string | undefined)[],
+  run: (model: string | undefined) => Promise<CliRunResult>
+): Promise<CliRunResult> {
+  const attemptLog: string[] = [];
+  for (const [index, model] of models.entries()) {
+    const result = await run(model);
+    const retry = isModelUnavailable(result) && index + 1 < models.length;
+    const reason = retry ? " fallback=model_not_found" : "";
+    attemptLog.push("[codex] model=" + (model ?? "auto") + " exit=" + result.exitCode + reason + "\n" + result.stderr);
+    if (!retry) return { ...result, stderr: attemptLog.join("\n") };
+  }
+  throw new Error("No Codex model candidates configured.");
+}
+
+export function buildCodexExecArgs(options: RunCodexExecOptions, lastMessagePath: string, model?: string): string[] {
+  const modelArgs = model ? ["--model", model] : [];
   return options.resumeLast
       ? [
           "exec",
           "resume",
           "--last",
           "--skip-git-repo-check",
-          "--model",
-          config.codex.model,
+          ...modelArgs,
           "--output-last-message",
           lastMessagePath,
           ...(options.outputSchemaPath ? ["--output-schema", options.outputSchemaPath] : []),
@@ -238,8 +270,7 @@ export function buildCodexExecArgs(options: RunCodexExecOptions, lastMessagePath
           "--skip-git-repo-check",
           "-C",
           process.cwd(),
-          "--model",
-          config.codex.model,
+          ...modelArgs,
           "--output-last-message",
           lastMessagePath,
           "--sandbox",
@@ -278,7 +309,6 @@ async function prepareRunnerCodexHome(codexHome?: string) {
   const sourceHome = path.resolve(config.codex.sourceHome ?? process.env.CODEX_HOME ?? path.join(process.env.USERPROFILE ?? "", ".codex"));
 
   await mkdir(runnerHome, { recursive: true });
-  await mkdir(path.join(runnerHome, "bin"), { recursive: true });
   await mkdir(path.join(runnerHome, "sessions"), { recursive: true });
   await mkdir(path.join(runnerHome, "tmp"), { recursive: true });
 
@@ -293,7 +323,6 @@ async function prepareRunnerCodexHome(codexHome?: string) {
     );
   }
   await copyIfExists(path.join(sourceHome, "AGENTS.md"), path.join(runnerHome, "AGENTS.md"));
-  await copyExeIfNeeded(resolveExternalCodexCommand(config.codex.cliCommand), path.join(runnerHome, "bin", "codex.exe"));
 
   return runnerHome;
 }
@@ -304,42 +333,6 @@ async function copyIfExists(source: string, destination: string) {
   }
 
   await copyFile(source, destination);
-}
-
-// codex.exe は起動中にコピーしようとすると EBUSY になるため、
-// コピー先に既に存在する場合はスキップする。
-async function copyExeIfNeeded(source: string, destination: string) {
-  if (!existsSync(source) || existsSync(destination)) {
-    return;
-  }
-
-  try {
-    await copyFile(source, destination);
-  } catch (error: unknown) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "EBUSY" || code === "EPERM") {
-      // コピー先が使用中または権限エラー → 既存ファイルをそのまま使用
-      return;
-    }
-    throw error;
-  }
-}
-
-function resolveCodexCommand(command: string, codexHome = config.codex.runnerHome) {
-  const runnerCodex = path.resolve(codexHome, "bin", "codex.exe");
-  if (process.platform === "win32" && existsSync(runnerCodex)) {
-    return runnerCodex;
-  }
-
-  if (command !== "codex" || process.platform !== "win32") {
-    return command;
-  }
-
-  const candidates = [
-    ...getUserCodexCandidates()
-  ];
-
-  return candidates.find((candidate) => existsSync(candidate)) ?? command;
 }
 
 function resolveExternalCodexCommand(command: string) {

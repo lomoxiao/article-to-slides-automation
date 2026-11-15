@@ -26,7 +26,8 @@ const envSchema = z.object({
     ),
   CODEX_RUNNER_HOME: z.string().default("./.codex-runner-home"),
   CODEX_SOURCE_HOME: z.string().optional(),
-  CODEX_MODEL: z.string().default("gpt-5.5"),
+  CODEX_MODEL: z.string().trim().optional(),
+  CODEX_MODEL_CANDIDATES: z.string().optional(),
   CODEX_EXEC_SANDBOX: z.enum(["read-only", "workspace-write", "danger-full-access"]).default("workspace-write"),
   CODEX_EXEC_TIMEOUT_MS: z.coerce.number().int().positive().default(900_000),
   // ⚠️ Do NOT set this. Verified 2026-06-23: setting ANTHROPIC_AUTH_TOKEN (or any
@@ -152,6 +153,7 @@ export const config = {
     runnerHome: env.CODEX_RUNNER_HOME,
     sourceHome: env.CODEX_SOURCE_HOME,
     model: env.CODEX_MODEL,
+    modelCandidates: [...new Set(env.CODEX_MODEL_CANDIDATES?.split(",").map((model) => model.trim()).filter(Boolean))],
     execSandbox: env.CODEX_EXEC_SANDBOX,
     execTimeoutMs: env.CODEX_EXEC_TIMEOUT_MS
   },

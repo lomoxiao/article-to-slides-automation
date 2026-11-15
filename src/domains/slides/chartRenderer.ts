@@ -11,7 +11,7 @@ type SlideLike = {
   image?: unknown;
 };
 
-const SVG_RENDER_TIMEOUT_MS = 10_000;
+const SVG_RENDER_TIMEOUT_MS = 30_000;
 
 export async function renderChartImagesInSlideData(slideData: unknown[]): Promise<unknown[]> {
   const clonedSlideData = structuredCloneJson(slideData);
@@ -114,7 +114,7 @@ async function renderSvgToPngDataUrl(browser: Browser, svg: string): Promise<str
 
   try {
     await page.setContent(createSvgRenderHtml(svg), {
-      waitUntil: "load",
+      waitUntil: "domcontentloaded",
       timeout: SVG_RENDER_TIMEOUT_MS
     });
     await page.waitForFunction(() => Boolean((window as unknown as { __svgRenderReady?: boolean }).__svgRenderReady), {

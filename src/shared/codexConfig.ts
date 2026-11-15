@@ -27,6 +27,9 @@ export function sanitizeCodexConfigToml(content: string): SanitizedCodexConfig {
       atTopLevel = false;
     }
 
+    if (atTopLevel && /^(?:model|"model"|'model')\s*=/.test(trimmed)) {
+      return false;
+    }
     if (!atTopLevel || !/^(?:service_tier|"service_tier")\s*=/.test(trimmed)) {
       return true;
     }
