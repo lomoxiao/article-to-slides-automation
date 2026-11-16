@@ -5,14 +5,13 @@ import { config } from "../../config.js";
 import {
   pruneArticleAudio,
   registerArticle,
-  upsertArticleAudio,
   upsertArticleSource,
   upsertArticleTldr
 } from "../../shared/firebaseArticleStore.js";
 import { createTextArticleIdentity } from "../../shared/identity.js";
 import { postSlackText } from "../../shared/slackNotifier.js";
 import { buildReaderUrl } from "../reader/instapaperDelivery.js";
-import { synthesizeDigestAudio, type DigestAudio } from "./digestAudio.js";
+import { saveArticleAudioFile, synthesizeDigestAudio, type DigestAudio } from "./digestAudio.js";
 import { countDigestArticles, parseDigestInput, type DigestInput } from "./digestInput.js";
 import { buildDigestMarkdown, buildDigestTitle } from "./digestMarkdown.js";
 import { generateDigestScript, parseDigestScript, type DigestScript } from "./digestScript.js";
@@ -57,15 +56,7 @@ export function defaultDigestDeps(): DigestDeps {
       register: (input) => registerArticle({ ...input, registeredFrom: "daily-digest" }),
       saveSource: (url, markdown) => upsertArticleSource(url, markdown, { version: 2, method: "daily_digest" }),
       saveTldr: upsertArticleTldr,
-      saveAudio: async (url, audio) => {
-        await upsertArticleAudio({
-          articleUrl: url,
-          mimeType: "audio/mp4",
-          base64: (await readFile(audio.filePath)).toString("base64"),
-          durationSec: audio.durationSec,
-          sizeBytes: audio.sizeBytes
-        });
-      },
+      saveAudio: saveArticleAudioFile,
       pruneAudio: () => pruneArticleAudio(DIGEST_AUDIO_RETENTION_DAYS)
     },
     notify: (text) => postSlackText({ text }),

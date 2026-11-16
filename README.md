@@ -136,29 +136,65 @@ jobs/
   failed/
 ```
 
-## GAS Viewer連携
+## Viewer連携（依頼キュー）
 
-GAS Viewerからスライド生成を依頼する場合、GAS側はSlack API `chat.postMessage` で以下の形式のメッセージを投稿します。
+Viewer（multimodal-article-viewer）からの生成依頼は、URL投入・テキスト投入とも Firebase Realtime Database の
+`/generationRequests` に書き込まれ、このサービスが受け取って処理します（`src/requests/generationRequestWatcher.ts`）。
+以前の「Viewer → GAS → Slack 投稿 → このサービス」という経路は、2026-11 に廃止しました。
 
-```text
-[slide-generate] https://example.com/article
+処理の流れ（URL投入）:
+
+1. Viewer が `{ kind: "url", urls: [...], slides, manga, video, ... }` を `status: "queued"` で書く
+2. このサービスが依頼を受け取り、記事を登録する
+3. 取り込み工程（`src/domains/ingest/ingestArticle.ts`）が本文を取得して保存する
+   - 取れなかった場合は、何も生成せず `failed`（`errorCode: SOURCE_UNAVAILABLE`）にし、
+     Viewer に「本文が取れていません（理由）」を表示する
+   - 取れた場合は、依頼に `ingest: { verdict, chars }` を書く（Viewer が「本文を取得しました」を表示）
+4. スライド・漫画・動画の生成へ進む。生成側も取り込み工程を通るため、保存済みの本文が再利用される
+
+Slack からの依頼（`/slides`、`[slide-generate]`、`[manga-generate]`、`[video-generate]`）は引き続き使えます。
+Slack 経由でも、生成の中で同じ取り込み工程を通ります。
+
+### 取り込みの設定
+
+| 環境変数 | 既定 | 内容 |
+|---|---|---|
+| `INGEST_REUSE_HOURS` | `24` | 保存済み本文を再利用する期間（時間）。`0` は期限なし |
+| `WEB_HTTP_USER_AGENT` | Chrome の名乗り | 記事取得時にサイトへ名乗る User-Agent |
+| `WEB_HTTP_TIMEOUT_MS` | `30000` | 記事取得のタイムアウト |
+
+強制的に取り直す場合は `npm run reader:refresh -- <URL>` を使います。
+
+### 調査用コマンド
+
+```powershell
+npm.cmd run article:show -- <記事URL>      # 記事の状態を表示（読み取りのみ）
+npm.cmd run article:restore -- <記事URL>   # Viewer で削除した記事を一覧に戻す
+npm.cmd run extraction:probe -- docs/extraction-probe-urls.txt   # 取り込みの計測
 ```
-
-Slack Socket Mode側がこのメッセージを受信し、既存のローカルCodex生成処理を起動します。GASから `/slides URL` を投稿してもSlash Commandは発火しないため、GAS Viewer連携では必ず `[slide-generate] URL` 形式を使います。
-
-`SLACK_COMPLETION_CHANNEL_ID` は、GAS Viewer連携では「生成依頼受付・完了通知兼用チャンネル」として使います。
-
-```env
-SLACK_COMPLETION_CHANNEL_ID=C000000000
-```
-
-`SLACK_COMPLETION_CHANNEL_ID` が設定されている場合、Socket Mode側はそのチャンネル以外の `[slide-generate]` メッセージを無視します。GAS側の投稿先チャンネルIDは、`article-to-slides-automation` 側の `SLACK_COMPLETION_CHANNEL_ID` と同じチャンネルにしてください。
 
 注意点:
 - ローカルCodexを動かすため、`article-to-slides-automation` はローカルPCで起動しておく必要があります。
-- Socket Modeを使うため、`SLACK_APP_TOKEN` が設定されている必要があります。
-- GASからSlackへ投稿するため、GAS側にはSlack Bot Tokenと投稿先チャンネルIDが必要です。
-- 通常のSlack投稿は処理されません。`[slide-generate]` prefixを持つメッセージだけが対象です。
+- 依頼の受付には Firebase の認証情報（サービスアカウント）が必要です。
+- Viewer で削除した記事に再び生成を依頼すると、記事は一覧に戻ります。
+
+## 1日のまとめ
+
+news-dashboard が毎朝書き出す材料（`.runtime/digest/YYYY-MM-DD.json`）から、「今日のまとめ」（3行要約・本文・音声）を
+1日1本作ります。`DIGEST_ENABLED=true` と `DIGEST_SOURCE_DIR` の設定で、起動時と30分ごとに自動実行されます。
+手動実行と失敗した日の再実行は `npm run digest:run -- [--date YYYY-MM-DD] [--force]` です。
+
+## 束（複数記事のまとめ）
+
+Viewer の一覧で「束ねる」を押して記事を2〜10本選ぶと、依頼キューに `kind: "bundle"` の依頼が入り、常駐プロセスが束を作ります。
+
+1. 記事ごとに要点を取り出す（`/articleDigests/{記事ID}` に保存。同じ記事を別の束に入れても AI 実行は繰り返さない）
+2. 要点を統合して、3行要約・本文・読み上げ原稿を作る（Codex 1回）
+3. 束を「合成された記事」（`bundle:bnd_…`）として登録する。同じ組み合わせなら同じ束に上書きする
+
+- 本文が取れない記事があっても、取れた記事で束を作り、含められなかった記事を理由つきで明示します。含められる記事が2本未満なら作りません。
+- 既定の出力は Viewer 内で読める3行要約・本文・音声です。スライド・漫画・動画は依頼で選んだときだけ追加で作ります。
+- 上限は `BUNDLE_MAX_MEMBERS`（既定 10）。
 
 ## Viewer成果物ステータス
 

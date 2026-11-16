@@ -13,8 +13,9 @@ const registerArticleInputSchema = z.object({
     .min(1, "url is required")
     .max(MAX_URL_LENGTH, "url is too long")
     .refine(
-      (value) => /^https?:\/\//i.test(value) || /^text:txt_[0-9a-f]{12}$/.test(value),
-      "url must start with http:// or https:// (or be a text: canonical)"
+      (value) =>
+        /^https?:\/\//i.test(value) || /^text:txt_[0-9a-f]{12}$/.test(value) || /^bundle:bnd_[0-9a-f]{12}$/.test(value),
+      "url must start with http:// or https:// (or be a text: / bundle: canonical)"
     ),
   title: z.string().trim().max(MAX_TEXT_LENGTH).optional(),
   headline: z.string().trim().max(MAX_TEXT_LENGTH).optional(),
@@ -26,7 +27,7 @@ export type RegisterArticleInput = z.input<typeof registerArticleInputSchema>;
 export type RegisterArticleResult = {
   articleId: string;
   canonicalUrl: string;
-  sourceKind: "web" | "youtube" | "text";
+  sourceKind: "web" | "youtube" | "text" | "bundle";
   isNew: boolean;
 };
 
@@ -601,4 +602,79 @@ export async function pruneArticleAudio(maxAgeDays: number, nowMs = Date.now()):
   }
   await getDb().ref().update(updates);
   return expired.length;
+}
+
+// ---- 束(複数記事のまとめ)
+
+export type StoredArticleSummary = {
+  articleId: string;
+  canonicalUrl: string;
+  title: string;
+  sourceKind: string;
+  deleted: boolean;
+};
+
+/** 記事の基本情報を読む(束のメンバー確認用)。無ければ undefined。 */
+export async function getArticleSummary(articleId: string): Promise<StoredArticleSummary | undefined> {
+  if (!/^[A-Za-z0-9_]{1,64}$/.test(articleId)) return undefined;
+  const snapshot = await getDb().ref(`/articles/${articleId}`).get();
+  if (!snapshot.exists()) return undefined;
+  const value = snapshot.val() as {
+    canonicalUrl?: string;
+    originalUrl?: string;
+    title?: string;
+    source?: { kind?: string };
+    deletedAt?: string;
+  };
+  const canonicalUrl = value.canonicalUrl || value.originalUrl || "";
+  if (!canonicalUrl) return undefined;
+  return {
+    articleId,
+    canonicalUrl,
+    title: value.title || canonicalUrl,
+    sourceKind: value.source?.kind || "web",
+    deleted: Boolean(value.deletedAt)
+  };
+}
+
+export type BundleMember = {
+  articleId: string;
+  title: string;
+  canonicalUrl: string;
+  status: "included" | "missing";
+  reason?: string;
+};
+
+/** 束に含めた記事・含められなかった記事の一覧を、束の記事ノードに書く。 */
+export async function upsertBundleMembers(bundleUrl: string, members: BundleMember[]): Promise<void> {
+  const identity = createArticleIdentity(bundleUrl);
+  await getDb()
+    .ref(`/articles/${identity.articleId}/bundle`)
+    .set({
+      members: members.map((member) => ({
+        articleId: member.articleId,
+        title: member.title.slice(0, MAX_TEXT_LENGTH),
+        canonicalUrl: member.canonicalUrl.slice(0, MAX_URL_LENGTH),
+        status: member.status,
+        ...(member.reason ? { reason: member.reason.slice(0, 200) } : {})
+      })),
+      createdAt: nowJstIso()
+    });
+}
+
+export type StoredArticleDigest = { summary: string; points: string[]; sourceHash: string };
+
+/** 記事ごとの要点(束をまたいで再利用する)。無ければ undefined。 */
+export async function getArticleDigest(articleId: string): Promise<StoredArticleDigest | undefined> {
+  const snapshot = await getDb().ref(`/articleDigests/${articleId}`).get();
+  if (!snapshot.exists()) return undefined;
+  const value = snapshot.val() as Partial<StoredArticleDigest>;
+  if (typeof value.summary !== "string" || !Array.isArray(value.points) || typeof value.sourceHash !== "string") {
+    return undefined;
+  }
+  return { summary: value.summary, points: value.points.map(String), sourceHash: value.sourceHash };
+}
+
+export async function setArticleDigest(articleId: string, digest: StoredArticleDigest): Promise<void> {
+  await getDb().ref(`/articleDigests/${articleId}`).set({ ...digest, createdAt: nowJstIso() });
 }

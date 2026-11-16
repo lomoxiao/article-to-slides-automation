@@ -21,6 +21,7 @@ import {
   PLAYWRIGHT_PUBLIC_STATUS_MESSAGE
 } from "../domains/slides/playwrightPreflight.js";
 import { SOURCE_UNAVAILABLE_CODE, isSourceUnavailableError } from "../shared/sourceErrors.js";
+import { isBundleError, runBundle, type BundleResult } from "../domains/bundle/bundlePipeline.js";
 import { isPublicHttpUrl, sanitizeArticleUrl } from "../utils/url.js";
 
 // Viewer からの生成依頼(依頼キュー)。テキスト投入と URL 投入を同じ入口で受ける。
@@ -28,6 +29,8 @@ import { isPublicHttpUrl, sanitizeArticleUrl } from "../utils/url.js";
 const REQUESTS_PATH = "/generationRequests";
 const MAX_PROCESSED_IDS = 500;
 const MAX_REQUEST_URLS = 3;
+// 受付時の上限(実際の上限は BUNDLE_MAX_MEMBERS で、束の作成時に確かめる)
+const MAX_BUNDLE_MEMBERS = 30;
 
 // viewerがRules(create-only, ownerUid=auth.uid, status=queued)の下で書く形。
 // admin側は防御的に再検証する(Rulesを信用しつつ、path追加やRules事故に備える)。
@@ -63,11 +66,24 @@ const urlRequestSchema = z.object({
   urls: z.array(z.string().min(1).max(2048)).min(1).max(MAX_REQUEST_URLS)
 });
 
-// 依頼の種類は kind で見分ける。束(bundle)などを後から足せる形にしてある。
+// 束(複数記事のまとめ)。既定の出力は Viewer 内で読める3行要約・本文・音声なので、
+// スライド・漫画・動画がすべて偽でもよい(選んだときだけ追加で作る)。
+const bundleRequestSchema = z.object({
+  ...commonRequestFields,
+  kind: z.literal("bundle"),
+  members: z.array(z.string().regex(/^(url|yt|txt)_[0-9a-f]+$/)).min(2).max(MAX_BUNDLE_MEMBERS),
+  title: z.string().max(200).optional(),
+  audio: z.boolean().optional().default(false)
+});
+
+// 依頼の種類は kind で見分ける。
 export const generationRequestSchema = z
-  .discriminatedUnion("kind", [textRequestSchema, urlRequestSchema])
+  .discriminatedUnion("kind", [textRequestSchema, urlRequestSchema, bundleRequestSchema])
   .superRefine((request, ctx) => {
-    if (!request.slides && !request.manga && !request.video) {
+    if (request.kind === "bundle" && new Set(request.members).size !== request.members.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["members"], message: "members must be unique" });
+    }
+    if (request.kind !== "bundle" && !request.slides && !request.manga && !request.video) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "At least one of slides, manga, or video must be true" });
     }
     if (request.manga !== Boolean(request.mangaOptions)) {
@@ -89,6 +105,7 @@ export const generationRequestSchema = z
 type GenerationRequest = z.infer<typeof generationRequestSchema>;
 type TextGenerationRequest = Extract<GenerationRequest, { kind: "text" }>;
 export type UrlGenerationRequest = Extract<GenerationRequest, { kind: "url" }>;
+export type BundleGenerationRequest = Extract<GenerationRequest, { kind: "bundle" }>;
 
 type Logger = Pick<Console, "log" | "warn" | "error">;
 type RequestUpdate = (patch: Record<string, unknown>) => Promise<void>;
@@ -176,6 +193,10 @@ async function handleRequest(requestId: string, logger: Logger): Promise<void> {
   try {
     if (request.kind === "url") {
       await handleUrlRequest(request, update, defaultUrlRequestDeps(), (message) =>
+        logger.log(`[generation-request] ${requestId}: ${message}`)
+      );
+    } else if (request.kind === "bundle") {
+      await handleBundleRequest(request, update, defaultBundleRequestDeps(), (message) =>
         logger.log(`[generation-request] ${requestId}: ${message}`)
       );
     } else {
@@ -387,6 +408,90 @@ export async function handleUrlRequest(
   log(`done (${articleId})`);
 }
 
+export type BundleRequestDeps = {
+  runBundle: (input: { memberIds: string[]; title?: string; audio?: boolean }) => Promise<BundleResult>;
+  enqueueVideo: (input: { url: string; sourceText: string; sourceTitle: string; audience?: string; focus?: string; requestedBy: string }) => Promise<unknown>;
+  enqueueManga: (input: {
+    url: string;
+    sourceText: string;
+    sourceTitle: string;
+    artStyle: string;
+    treatment: string;
+    genre?: string;
+    audience?: string;
+    focus?: string;
+    requestedBy: string;
+  }) => void;
+  runSlides: (input: { url: string; sourceText: string; sourceTitle: string; audience?: string; focus?: string }) => Promise<void>;
+};
+
+function defaultBundleRequestDeps(): BundleRequestDeps {
+  return {
+    runBundle: (input) => runBundle(input),
+    enqueueVideo: (input) => enqueueVideoGeneration(input),
+    enqueueManga: (input) =>
+      enqueueMangaGeneration({
+        url: input.url,
+        sourceText: input.sourceText,
+        sourceTitle: input.sourceTitle,
+        pages: DEFAULT_MANGA_PAGES,
+        artStyle: input.artStyle,
+        treatment: input.treatment as MangaTreatment,
+        genre: input.genre,
+        audience: input.audience,
+        focus: input.focus,
+        requestedBy: input.requestedBy
+      }),
+    runSlides: async (input) => {
+      await ensureSlidesRuntimeReady();
+      const job = await runUrlToGasSlidesWorkflow(input);
+      const result = await processSlideJob(job.id);
+      if (!result.ok) {
+        throw new Error("AUTO_RUN_CODEX is disabled; slideData.json was not generated automatically.");
+      }
+    }
+  };
+}
+
+/**
+ * 束の依頼を処理する。束そのもの(3行要約・本文・音声)を作って登録し、
+ * スライド・漫画・動画が選ばれていれば、束の本文を材料にして追加で作る(テキスト投入と同じ経路)。
+ */
+export async function handleBundleRequest(
+  request: BundleGenerationRequest,
+  update: RequestUpdate,
+  deps: BundleRequestDeps,
+  log: (message: string) => void = () => {}
+): Promise<void> {
+  const requestedBy = `viewer:${request.ownerUid}`;
+  const bundle = await deps.runBundle({ memberIds: request.members, title: request.title, audio: request.audio });
+  await update({
+    articleId: bundle.articleId,
+    bundle: { included: bundle.included, missing: bundle.missing, audio: bundle.audio }
+  });
+  log(`bundle ${bundle.articleId}: included=${bundle.included} missing=${bundle.missing}`);
+
+  const source = { url: bundle.url, sourceText: bundle.body, sourceTitle: bundle.title };
+  if (request.video) {
+    await deps.enqueueVideo({ ...source, audience: request.audience, focus: request.focus, requestedBy });
+  }
+  if (request.manga && request.mangaOptions) {
+    deps.enqueueManga({
+      ...source,
+      artStyle: request.mangaOptions.artStyle,
+      treatment: request.mangaOptions.treatment,
+      genre: request.mangaOptions.genre,
+      audience: request.audience,
+      focus: request.focus,
+      requestedBy
+    });
+  }
+  if (request.slides) {
+    await deps.runSlides({ ...source, audience: request.audience, focus: request.focus });
+  }
+  await update({ status: "done", articleId: bundle.articleId });
+}
+
 export function generationRequestFailure(error: unknown): Record<string, string> {
   if (isSlidesRuntimeUnavailableError(error)) {
     return {
@@ -402,6 +507,15 @@ export function generationRequestFailure(error: unknown): Record<string, string>
       status: "failed",
       errorCode: SOURCE_UNAVAILABLE_CODE,
       statusMessage: error.message,
+      error: error.message.slice(0, 500)
+    };
+  }
+  // 束にできる記事が足りない等、利用者にそのまま見せてよい理由
+  if (isBundleError(error)) {
+    return {
+      status: "failed",
+      errorCode: "BUNDLE_FAILED",
+      statusMessage: error.message.slice(0, 500),
       error: error.message.slice(0, 500)
     };
   }

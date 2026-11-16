@@ -146,6 +146,11 @@ const envSchema = z.object({
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
     z.coerce.number().min(0).default(24)
   ),
+  // 束(複数記事のまとめ)に入れられる記事数の上限。
+  BUNDLE_MAX_MEMBERS: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().min(2).max(30).default(10)
+  ),
   // 1日のまとめ(今日のまとめ)。明示的に有効化するまで自動実行しない。
   DIGEST_ENABLED: envBool(false),
   // news-dashboard が材料を書き出すフォルダ(例: D:\\work\\knowledge-workflows\\news-dashboard\\.runtime\\digest)。
@@ -246,6 +251,9 @@ export const config = {
   },
   ingest: {
     reuseHours: env.INGEST_REUSE_HOURS
+  },
+  bundle: {
+    maxMembers: env.BUNDLE_MAX_MEMBERS
   },
   digest: {
     enabled: env.DIGEST_ENABLED,

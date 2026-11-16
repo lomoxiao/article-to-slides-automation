@@ -1,4 +1,5 @@
 import { restoreDeletedArticle } from "../shared/firebaseArticleStore.js";
+import { isSyntheticArticleUrl } from "../shared/identity.js";
 import { sanitizeArticleUrl } from "../utils/url.js";
 import { usage } from "./lib/cli.js";
 
@@ -9,7 +10,7 @@ if (!url) {
   usage("Usage: npm run article:restore -- <記事URL>");
 }
 
-const restored = await restoreDeletedArticle(url.startsWith("text:") ? url : sanitizeArticleUrl(url));
+const restored = await restoreDeletedArticle(isSyntheticArticleUrl(url) ? url : sanitizeArticleUrl(url));
 console.log(restored ? "一覧に戻しました" : "削除済みの印は付いていませんでした(変更なし)");
 // firebase-admin が接続を保持するため明示終了する
 process.exit(0);

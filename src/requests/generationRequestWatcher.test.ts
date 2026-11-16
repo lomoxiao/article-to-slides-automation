@@ -1,10 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { SourceUnavailableError } from "../shared/sourceErrors.js";
+import { BundleError } from "../domains/bundle/bundlePipeline.js";
 import {
   generationRequestFailure,
   generationRequestSchema,
+  handleBundleRequest,
   handleUrlRequest,
+  type BundleGenerationRequest,
+  type BundleRequestDeps,
   type UrlGenerationRequest,
   type UrlRequestDeps
 } from "./generationRequestWatcher.js";
@@ -48,7 +52,19 @@ test("依頼の形: 漫画・動画を含む依頼はURL1件のみ。生成対�
 });
 
 test("依頼の形: 未知の種類は拒否する", () => {
-  assert.equal(parse({ kind: "bundle", members: ["url_x"], slides: true }).success, false);
+  assert.equal(parse({ kind: "research", prompt: "x", slides: true }).success, false);
+});
+
+test("依頼の形: 束は記事ID 2件以上。スライド等がすべて偽でもよい", () => {
+  const members = ["url_0123456789ab", "yt_0123456789ab", "txt_0123456789ab"];
+  assert.equal(parse({ kind: "bundle", members }).success, true);
+  assert.equal(parse({ kind: "bundle", members, audio: true, slides: true, title: "今週のAI" }).success, true);
+  assert.equal(parse({ kind: "bundle", members: ["url_0123456789ab"] }).success, false);
+  assert.equal(parse({ kind: "bundle", members: ["url_0123456789ab", "url_0123456789ab"] }).success, false);
+  // 束そのものや、IDの形でないものはメンバーにできない
+  assert.equal(parse({ kind: "bundle", members: ["url_0123456789ab", "bnd_0123456789ab"] }).success, false);
+  assert.equal(parse({ kind: "bundle", members: ["url_0123456789ab", "https://example.com/a"] }).success, false);
+  assert.equal(parse({ kind: "bundle", members: ["url_0123456789ab", "../secrets"] }).success, false);
 });
 
 function urlRequest(overrides: Record<string, unknown> = {}): UrlGenerationRequest {
@@ -149,4 +165,66 @@ test("失敗の記録: 生成途中で本文が取れないと分かった場合
   assert.equal(failure.errorCode, "SOURCE_UNAVAILABLE");
   assert.match(failure.statusMessage ?? "", /本文が取れていません/);
   assert.deepEqual(generationRequestFailure(new Error("x")), { status: "failed", error: "x" });
+});
+
+function bundleSetup(options: { error?: Error } = {}) {
+  const calls = { bundles: [] as string[][], video: 0, manga: 0, slides: [] as string[], updates: [] as Array<Record<string, unknown>> };
+  const deps: BundleRequestDeps = {
+    runBundle: async (input) => {
+      calls.bundles.push(input.memberIds);
+      if (options.error) throw options.error;
+      return {
+        articleId: "bnd_0123456789ab",
+        url: "bundle:bnd_0123456789ab",
+        title: "束のタイトル",
+        body: "束の本文",
+        included: 2,
+        missing: 1,
+        audio: Boolean(input.audio),
+        digestsCreated: 2
+      };
+    },
+    enqueueVideo: async () => {
+      calls.video += 1;
+    },
+    enqueueManga: () => {
+      calls.manga += 1;
+    },
+    runSlides: async (input) => {
+      calls.slides.push(`${input.url}|${input.sourceTitle}|${input.sourceText}`);
+    }
+  };
+  const update = async (patch: Record<string, unknown>) => {
+    calls.updates.push(patch);
+  };
+  const request = (overrides: Record<string, unknown> = {}) => {
+    const parsed = parse({ kind: "bundle", members: ["url_0123456789ab", "url_ba9876543210", "txt_0123456789ab"], ...overrides });
+    assert.equal(parsed.success, true);
+    return parsed.data as BundleGenerationRequest;
+  };
+  return { deps, calls, update, request };
+}
+
+test("束の依頼: 束を作って結果を依頼に書き、done にする(追加の生成は選んだものだけ)", async () => {
+  const { deps, calls, update, request } = bundleSetup();
+  await handleBundleRequest(request({ audio: true }), update, deps);
+
+  assert.equal(calls.bundles.length, 1);
+  assert.deepEqual(calls.updates[0], { articleId: "bnd_0123456789ab", bundle: { included: 2, missing: 1, audio: true } });
+  assert.deepEqual(calls.updates.at(-1), { status: "done", articleId: "bnd_0123456789ab" });
+  assert.equal(calls.video + calls.manga + calls.slides.length, 0);
+});
+
+test("束の依頼: スライドを選ぶと、束の本文を材料にして束の記事に付ける", async () => {
+  const { deps, calls, update, request } = bundleSetup();
+  await handleBundleRequest(request({ slides: true }), update, deps);
+  assert.deepEqual(calls.slides, ["bundle:bnd_0123456789ab|束のタイトル|束の本文"]);
+});
+
+test("束の依頼: 束にできなかった場合は、理由つきの failed になる", async () => {
+  const { deps, update, request } = bundleSetup({ error: new BundleError("束にできる記事が2本未満です。") });
+  await assert.rejects(handleBundleRequest(request(), update, deps), /2本未満/);
+  const failure = generationRequestFailure(new BundleError("束にできる記事が2本未満です。"));
+  assert.equal(failure.errorCode, "BUNDLE_FAILED");
+  assert.match(failure.statusMessage ?? "", /2本未満/);
 });

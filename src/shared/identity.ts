@@ -3,12 +3,21 @@ import { createHash } from "node:crypto";
 export type ArticleIdentity = {
   articleId: string;
   canonicalUrl: string;
-  sourceKind: "web" | "youtube" | "text";
+  sourceKind: "web" | "youtube" | "text" | "bundle";
 };
 
 // URLを持たないテキスト投入記事の合成canonical。articleIdと同値を埋め込むことで
 // URLキー前提の既存パイプライン(jobStore/artifact書き込み/診断)をそのまま流用する。
 const TEXT_CANONICAL_PATTERN = /^text:(txt_[0-9a-f]{12})$/;
+
+// 束(複数記事のまとめ)の合成canonical。テキスト投入と同じ考え方で、既存の記事用の仕組みをそのまま使う。
+const BUNDLE_CANONICAL_PATTERN = /^bundle:(bnd_[0-9a-f]{12})$/;
+
+/** URL を持たない合成の記事(テキスト投入・束)か。これらは外部サイトから取り直せない。 */
+export function isSyntheticArticleUrl(url: string): boolean {
+  const value = url.trim();
+  return TEXT_CANONICAL_PATTERN.test(value) || BUNDLE_CANONICAL_PATTERN.test(value);
+}
 
 const TRACKING_QUERY_KEYS = new Set([
   "fbclid",
@@ -30,6 +39,15 @@ export function createArticleIdentity(rawUrl: string): ArticleIdentity {
     };
   }
 
+  const bundleMatch = rawUrl.trim().match(BUNDLE_CANONICAL_PATTERN);
+  if (bundleMatch) {
+    return {
+      articleId: bundleMatch[1],
+      canonicalUrl: rawUrl.trim(),
+      sourceKind: "bundle"
+    };
+  }
+
   const youtubeVideoId = extractYouTubeVideoId(rawUrl);
   if (youtubeVideoId) {
     const canonicalUrl = `https://www.youtube.com/watch?v=${youtubeVideoId}`;
@@ -46,6 +64,14 @@ export function createArticleIdentity(rawUrl: string): ArticleIdentity {
     canonicalUrl,
     sourceKind: "web"
   };
+}
+
+/**
+ * 束のID。メンバー記事のIDを並べ替えて作るので、同じ組み合わせなら(選んだ順に関係なく)同じ束になる。
+ */
+export function createBundleIdentity(memberArticleIds: string[]): ArticleIdentity {
+  const members = [...new Set(memberArticleIds)].sort();
+  return createArticleIdentity(`bundle:bnd_${shortHash(members.join(","))}`);
 }
 
 export function createTextArticleIdentity(text: string): ArticleIdentity {

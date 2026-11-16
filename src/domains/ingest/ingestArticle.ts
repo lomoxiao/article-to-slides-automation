@@ -6,7 +6,7 @@ import {
   type ArticleIngestState,
   type StoredArticleSource
 } from "../../shared/firebaseArticleStore.js";
-import { createArticleIdentity } from "../../shared/identity.js";
+import { createArticleIdentity, isSyntheticArticleUrl } from "../../shared/identity.js";
 import { fetchSourceContent, mergeSources, type MergedSourceContent } from "../../shared/sourceAggregator.js";
 import { SourceUnavailableError, isSourceUnavailableError } from "../../shared/sourceErrors.js";
 import type { SourceContent } from "../../types/content.js";
@@ -83,10 +83,10 @@ function fromStored(url: string, articleId: string, stored: StoredArticleSource)
 }
 
 async function ingest(url: string, articleId: string, force: boolean, deps: IngestDeps): Promise<IngestResult> {
-  const isTextArticle = url.startsWith("text:");
+  const isTextArticle = isSyntheticArticleUrl(url);
   if (!force || isTextArticle) {
     const stored = await deps.loadStored(url).catch(() => undefined);
-    // テキスト投入の記事は取り直せないので、保存済み本文があれば期間に関係なく使う
+    // テキスト投入・束の記事は取り直せないので、保存済み本文があれば期間に関係なく使う
     if (isTextArticle) {
       if (stored?.markdown) return fromStored(url, articleId, { ...stored, title: stored.title ?? "テキスト投入" });
       throw new SourceUnavailableError(url, "empty", "本文が取れていません（保存済みの本文がありません）。テキスト投入をやり直してください。");
@@ -132,7 +132,7 @@ export async function ingestArticle(
   options: { force?: boolean } = {},
   deps: IngestDeps = defaultDeps()
 ): Promise<IngestResult> {
-  const url = rawUrl.startsWith("text:") ? rawUrl.trim() : sanitizeArticleUrl(rawUrl);
+  const url = isSyntheticArticleUrl(rawUrl) ? rawUrl.trim() : sanitizeArticleUrl(rawUrl);
   const { articleId } = createArticleIdentity(url);
   const key = `${articleId}:${options.force ? "force" : "normal"}`;
   const running = inFlight.get(key);
