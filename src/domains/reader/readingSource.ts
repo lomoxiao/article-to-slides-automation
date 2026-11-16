@@ -29,7 +29,7 @@ export type ParsedMarkdownDocument = {
  * frontmatter は「キー: 値」の浅い形だけを読む（Vault の成果物がこの形のため）。
  */
 export function parseMarkdownDocument(markdown: string): ParsedMarkdownDocument {
-  const normalized = markdown.replace(/^﻿/, "").replace(/\r\n/g, "\n");
+  const normalized = markdown.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
   const frontmatter: Record<string, string> = {};
   let body = normalized;
 
