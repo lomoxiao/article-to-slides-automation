@@ -178,6 +178,8 @@ async function setup(options: {
   failDigest?: string[];
   synthesisOutputs?: string[];
   audioFails?: boolean;
+  progressFails?: boolean;
+  existingBundle?: boolean;
 } = {}) {
   const jobsRoot = await mkdtemp(path.join(tmpdir(), "bundle-test-"));
   const calls = {
@@ -187,14 +189,19 @@ async function setup(options: {
     sources: [] as string[],
     tldrs: [] as string[],
     members: [] as BundleMember[][],
-    audio: 0
+    audio: 0,
+    progress: [] as string[]
   };
   const outputs = options.synthesisOutputs ?? [synthesisJson([[1, 2, 3]])];
   const deps: BundleDeps = {
     maxMembers: 10,
     jobsRoot,
-    getArticle: async (articleId) =>
-      options.articles && articleId in options.articles ? options.articles[articleId] : article(articleId),
+    getArticle: async (articleId) => {
+      if (articleId.startsWith("bnd_") && !(options.articles && articleId in options.articles)) {
+        return options.existingBundle ? article(articleId, { sourceKind: "bundle" }) : undefined;
+      }
+      return options.articles && articleId in options.articles ? options.articles[articleId] : article(articleId);
+    },
     loadSource: async (item) => {
       if (options.failSource?.includes(item.articleId)) {
         throw new Error("本文が取れていません（サイトに取得を拒否されました）。記事をコピーして、テキスト投入をお試しください。");
@@ -229,6 +236,10 @@ async function setup(options: {
       },
       saveAudio: async () => {
         calls.audio += 1;
+      },
+      saveProgress: async (_url, value) => {
+        if (options.progressFails) throw new Error("database unavailable");
+        calls.progress.push([value.status, value.stage, value.statusMessage].filter(Boolean).join(":"));
       }
     },
     log: () => {}
@@ -247,8 +258,8 @@ test("束: 記事ごとに要点を取り、統合して登録する", async () 
   assert.equal(result.digestsCreated, 3);
   assert.deepEqual(calls.digests, ["url_a", "url_b", "url_c"]);
   assert.equal(calls.prompts.length, 1);
-  assert.equal(calls.registered[0]?.url, result.url);
-  assert.equal(calls.registered[0]?.headline, "一つ目");
+  assert.equal(calls.registered.at(-1)?.url, result.url);
+  assert.equal(calls.registered.at(-1)?.headline, "一つ目");
   assert.equal(calls.tldrs[0], "- 一つ目\n- 二つ目\n- 三つ目");
   assert.equal(calls.audio, 1);
   assert.deepEqual(calls.members[0]?.map((member) => member.status), ["included", "included", "included"]);
@@ -289,7 +300,9 @@ test("束: 含められる記事が2本未満なら作らず、理由つきで�
     runBundle({ memberIds: ["url_a", "url_b", "url_c"] }, deps),
     (error: Error) => error.name === "BundleError" && /2本未満/.test(error.message) && /取得を拒否/.test(error.message)
   );
-  assert.equal(calls.registered.length, 0);
+  // 仮の登録だけが残り、失敗の理由が付く
+  assert.equal(calls.registered.length, 1);
+  assert.match(calls.progress.at(-1) ?? "", /^failed:束にできる記事が2本未満/);
   assert.equal(calls.prompts.length, 0);
 });
 
@@ -317,7 +330,9 @@ test("束: 統合で記事が落ちたら1回だけ再実行し、それでも�
 test("束: 統合の出力が2回とも不正なら失敗し、何も登録しない", async () => {
   const { deps, calls } = await setup({ synthesisOutputs: ["壊れた出力", "これも壊れている"] });
   await assert.rejects(runBundle({ memberIds: ["url_a", "url_b"] }, deps), /synthesis failed twice/);
-  assert.equal(calls.registered.length, 0);
+  assert.equal(calls.registered.length, 1);
+  // 内部の失敗理由(英語の例外文)は Viewer に出さない
+  assert.equal(calls.progress.at(-1), "failed:束を作れませんでした。時間をおいて、もう一度お試しください。");
 });
 
 test("束: 音声だけ失敗しても束は登録する。音声を頼まなければ作らない", async () => {
@@ -325,7 +340,8 @@ test("束: 音声だけ失敗しても束は登録する。音声を頼まなけ
   const result = await runBundle({ memberIds: ["url_a", "url_b", "url_c"], audio: true }, failed.deps);
   assert.equal(result.audio, false);
   assert.match(result.audioError ?? "", /TTS environment missing/);
-  assert.equal(failed.calls.registered.length, 1);
+  assert.equal(failed.calls.registered.length, 2);
+  assert.equal(failed.calls.progress.at(-1), "completed");
 
   const noAudio = await setup();
   const silent = await runBundle({ memberIds: ["url_a", "url_b", "url_c"] }, noAudio.deps);
@@ -347,5 +363,31 @@ test("束: タイトルを指定すればそれを使う", async () => {
   const { deps, calls } = await setup();
   const result = await runBundle({ memberIds: ["url_a", "url_b", "url_c"], title: "今週のAIまとめ" }, deps);
   assert.equal(result.title, "今週のAIまとめ");
-  assert.equal(calls.registered[0]?.title, "今週のAIまとめ");
+  assert.deepEqual(calls.registered.map((item) => item.title), ["今週のAIまとめ", "今週のAIまとめ"]);
+});
+
+test("束の進捗: 作り始めに仮登録し、段階ごとに状況を書いて、最後に completed にする", async () => {
+  const { deps, calls } = await setup();
+  await runBundle({ memberIds: ["url_a", "url_b", "url_c"], audio: true }, deps);
+  assert.equal(calls.registered[0]?.title, "3本の記事のまとめ（作成中）");
+  assert.deepEqual(calls.progress, [
+    "processing:本文を用意中",
+    "processing:要点を抽出中（1/3）",
+    "processing:要点を抽出中（2/3）",
+    "processing:要点を抽出中（3/3）",
+    "processing:まとめを作成中",
+    "processing:音声を作成中",
+    "completed"
+  ]);
+});
+
+test("束の進捗: 作り直しでは仮登録しない(前回の内容を残す)。進捗が書けなくても束は作る", async () => {
+  const again = await setup({ existingBundle: true });
+  await runBundle({ memberIds: ["url_a", "url_b", "url_c"] }, again.deps);
+  assert.equal(again.calls.registered.length, 1);
+  assert.equal(again.calls.progress[0], "processing:本文を用意中");
+
+  const broken = await setup({ progressFails: true });
+  const result = await runBundle({ memberIds: ["url_a", "url_b", "url_c"] }, broken.deps);
+  assert.equal(result.included, 3);
 });

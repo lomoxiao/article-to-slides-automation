@@ -648,9 +648,10 @@ export type BundleMember = {
 /** 束に含めた記事・含められなかった記事の一覧を、束の記事ノードに書く。 */
 export async function upsertBundleMembers(bundleUrl: string, members: BundleMember[]): Promise<void> {
   const identity = createArticleIdentity(bundleUrl);
+  // 進捗(status / stage)と同じ場所に置くので、set ではなく update で一覧だけ差し替える
   await getDb()
     .ref(`/articles/${identity.articleId}/bundle`)
-    .set({
+    .update({
       members: members.map((member) => ({
         articleId: member.articleId,
         title: member.title.slice(0, MAX_TEXT_LENGTH),
@@ -659,6 +660,27 @@ export async function upsertBundleMembers(bundleUrl: string, members: BundleMemb
         ...(member.reason ? { reason: member.reason.slice(0, 200) } : {})
       })),
       createdAt: nowJstIso()
+    });
+}
+
+export type BundleProgress = {
+  status: "processing" | "completed" | "failed";
+  /** いま何をしているか(例: 要点を抽出中（2/5）)。Viewer にそのまま出す。 */
+  stage?: string;
+  /** 失敗の理由。Viewer にそのまま出す。 */
+  statusMessage?: string;
+};
+
+/** 束の作成状況を、束の記事ノードに書く(Viewer が一覧と詳細に出す)。 */
+export async function upsertBundleProgress(bundleUrl: string, progress: BundleProgress): Promise<void> {
+  const identity = createArticleIdentity(bundleUrl);
+  await getDb()
+    .ref(`/articles/${identity.articleId}/bundle`)
+    .update({
+      status: progress.status,
+      stage: (progress.stage ?? "").slice(0, 80),
+      statusMessage: (progress.statusMessage ?? "").slice(0, 500),
+      updatedAt: nowJstIso()
     });
 }
 

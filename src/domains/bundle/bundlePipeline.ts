@@ -8,7 +8,9 @@ import {
   upsertArticleSource,
   upsertArticleTldr,
   upsertBundleMembers,
+  upsertBundleProgress,
   type BundleMember,
+  type BundleProgress,
   type StoredArticleSummary
 } from "../../shared/firebaseArticleStore.js";
 import { createBundleIdentity, isSyntheticArticleUrl } from "../../shared/identity.js";
@@ -76,6 +78,8 @@ export type BundleDeps = {
     saveTldr: (url: string, tldr: string) => Promise<void>;
     saveMembers: (url: string, members: BundleMember[]) => Promise<void>;
     saveAudio: (url: string, audio: DigestAudio) => Promise<void>;
+    /** 作成状況(いま何をしているか・失敗の理由)。Viewer に出す。 */
+    saveProgress: (url: string, progress: BundleProgress) => Promise<void>;
   };
   log: (message: string) => void;
 };
@@ -99,7 +103,8 @@ export function defaultBundleDeps(): BundleDeps {
         upsertArticleSource(url, markdown, { version: 2, method: "bundle_synthesis", title }),
       saveTldr: upsertArticleTldr,
       saveMembers: upsertBundleMembers,
-      saveAudio: saveArticleAudioFile
+      saveAudio: saveArticleAudioFile,
+      saveProgress: upsertBundleProgress
     },
     log: (message) => console.log(`[bundle] ${message}`)
   };
@@ -119,6 +124,44 @@ export async function runBundle(input: BundleInput, deps: BundleDeps = defaultBu
   if (memberIds.length < BUNDLE_MIN_MEMBERS) throw new BundleError("束にする記事を2本以上選んでください。");
   if (memberIds.length > deps.maxMembers) throw new BundleError(`束にできる記事は${deps.maxMembers}本までです。`);
 
+  const identity = createBundleIdentity(memberIds);
+  // 進捗の書き込みは best-effort(書けなくても束の作成は続ける)
+  const progress = (value: BundleProgress) => deps.store.saveProgress(identity.canonicalUrl, value).catch(() => {});
+
+  // 作り始めた時点で Viewer の一覧に出す。初めての束は仮のタイトルで先に登録する
+  // (作り直しの場合は、前回の内容を残したまま「作成中」だけ付ける)
+  try {
+    if (!(await deps.getArticle(identity.articleId))) {
+      await deps.store.register({
+        url: identity.canonicalUrl,
+        title: input.title?.trim() || `${memberIds.length}本の記事のまとめ（作成中）`,
+        headline: ""
+      });
+    }
+  } catch (error) {
+    deps.log(`early registration failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  await progress({ status: "processing", stage: "本文を用意中" });
+
+  try {
+    const result = await buildBundle(input, memberIds, deps, (stage) => progress({ status: "processing", stage }));
+    await progress({ status: "completed" });
+    return result;
+  } catch (error) {
+    await progress({
+      status: "failed",
+      statusMessage: isBundleError(error) ? error.message : "束を作れませんでした。時間をおいて、もう一度お試しください。"
+    });
+    throw error;
+  }
+}
+
+async function buildBundle(
+  input: BundleInput,
+  memberIds: string[],
+  deps: BundleDeps,
+  setStage: (stage: string) => Promise<void>
+): Promise<BundleResult> {
   const identity = createBundleIdentity(memberIds);
   const jobDir = path.join(deps.jobsRoot, identity.articleId);
   await mkdir(jobDir, { recursive: true });
@@ -157,7 +200,8 @@ export async function runBundle(input: BundleInput, deps: BundleDeps = defaultBu
   // 2. 記事ごとの要点抽出(AI 実行は1本ずつ流れる)。抽出できなかった記事も「含められなかった」に回す
   const sources: BundleSource[] = [];
   let digestsCreated = 0;
-  for (const candidate of candidates) {
+  for (const [position, candidate] of candidates.entries()) {
+    await setStage(`要点を抽出中（${position + 1}/${candidates.length}）`);
     try {
       const digest = await deps.digest({
         articleId: candidate.article.articleId,
@@ -196,6 +240,7 @@ export async function runBundle(input: BundleInput, deps: BundleDeps = defaultBu
   members.sort((a, b) => memberIds.indexOf(a.articleId) - memberIds.indexOf(b.articleId));
 
   // 3. 統合(Codex 1回。全記事が出典に現れなければ1回だけ再実行し、それでも欠けたら機械的に足す)
+  await setStage("まとめを作成中");
   let synthesis: BundleSynthesis | undefined;
   let uncovered: number[] = [];
   let lastError: unknown;
@@ -230,6 +275,7 @@ export async function runBundle(input: BundleInput, deps: BundleDeps = defaultBu
       audioError = "読み上げ原稿が規定の長さに収まりませんでした";
     } else {
       try {
+        await setStage("音声を作成中");
         audio = await deps.synthesizeAudio(jobDir, narration);
       } catch (error) {
         audioError = (error instanceof Error ? error.message : String(error)).slice(0, 300);
