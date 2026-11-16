@@ -1,9 +1,5 @@
-import {
-  fetchMultipleSourceContent,
-  fetchResearchContent,
-  fetchSourceContent,
-  type MergedSourceContent
-} from "../shared/sourceAggregator.js";
+import { fetchResearchContent, type MergedSourceContent } from "../shared/sourceAggregator.js";
+import { ingestArticle, ingestMultiple } from "../domains/ingest/ingestArticle.js";
 import { createGoogleSlidesDeck } from "../domains/slides/googleSlides.js";
 import { notifySlack } from "../shared/slackNotifier.js";
 import { summarizeForSlides } from "../shared/summarizer.js";
@@ -26,9 +22,9 @@ export async function runUrlToSlidesWorkflow(input: UrlToSlidesInput) {
   if (input.researchPrompt) {
     content = await fetchResearchContent(input.researchPrompt);
   } else if (urls && urls.length > 1) {
-    content = await fetchMultipleSourceContent(urls);
+    content = await ingestMultiple(urls);
   } else if (urls?.[0]) {
-    const source = await fetchSourceContent(urls[0]);
+    const source = await ingestArticle(urls[0]);
     content = {
       sources: [{ url: source.url, title: source.title, body: source.text }],
       mergedBody: source.text

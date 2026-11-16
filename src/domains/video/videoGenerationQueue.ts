@@ -1,11 +1,12 @@
 import { config } from "../../config.js";
-import { clearArtifactDiagnostic, upsertArtifactDiagnostic, upsertVideoArtifact } from "../../shared/firebaseArticleStore.js";
+import { clearArtifactDiagnostic, restoreDeletedArticle, upsertArtifactDiagnostic, upsertVideoArtifact } from "../../shared/firebaseArticleStore.js";
 import { resourceIntensiveSemaphore } from "../../shared/resourceSemaphore.js";
 import { notifyVideoCompleted, notifyVideoFailed } from "../../shared/slackNotifier.js";
 import { generateVideoLocally, uploadVideoOutputs, VideoActionRequiredError } from "./videoPipeline.js";
 import { createVideoJob, isManagedVideoJob, listInterruptedVideoJobs, updateVideoJob, type CreateVideoJobInput } from "./videoJobStore.js";
 import type { VideoJob } from "./types.js";
 import { assertVideoRuntimeReady } from "./preflightState.js";
+import { SOURCE_UNAVAILABLE_CODE, isSourceUnavailableError } from "../../shared/sourceErrors.js";
 
 let queueTail: Promise<void> = Promise.resolve();
 const enqueued = new Set<string>();
@@ -14,6 +15,8 @@ export async function enqueueVideoGeneration(input: CreateVideoJobInput): Promis
   if (!config.video.enabled) throw new Error("VIDEO_GENERATION_DISABLED");
   await assertVideoRuntimeReady();
   const job = await createVideoJob({ ...input, executionMode: "managed" });
+  // 削除済みの記事に生成を依頼した場合は、一覧に戻す
+  await restoreDeletedArticle(job.url).catch(() => false);
   await writeVideoState(job, "pending", "video_queued", "動画生成の開始を待っています");
   enqueueExisting(job);
   return job;
@@ -114,8 +117,14 @@ async function runQueuedJob(initialJob: VideoJob): Promise<void> {
       manifestFileId: job.manifestFileId
     });
   } catch (error) {
-    const actionRequired = error instanceof VideoActionRequiredError;
-    const code = actionRequired ? error.code : "VIDEO_GENERATION_FAILED";
+    // 本文が取れなかった場合は、利用者の対応(テキスト投入)待ちとして扱う
+    const sourceUnavailable = isSourceUnavailableError(error);
+    const actionRequired = error instanceof VideoActionRequiredError || sourceUnavailable;
+    const code = error instanceof VideoActionRequiredError
+      ? error.code
+      : sourceUnavailable
+        ? SOURCE_UNAVAILABLE_CODE
+        : "VIDEO_GENERATION_FAILED";
     const detail = error instanceof Error ? error.message : String(error);
     job = await updateVideoJob(job, {
       status: actionRequired ? "action_required" : "failed",
@@ -126,7 +135,7 @@ async function runQueuedJob(initialJob: VideoJob): Promise<void> {
       job,
       actionRequired ? "action_required" : "failed",
       job.stage,
-      actionRequired ? "動画生成に手動確認が必要です" : "動画生成に失敗しました",
+      sourceUnavailable ? detail : actionRequired ? "動画生成に手動確認が必要です" : "動画生成に失敗しました",
       { code, detail }
     );
     await notifyVideoFailed({

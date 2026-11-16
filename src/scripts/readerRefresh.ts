@@ -3,9 +3,9 @@ import { deliverReadingEditionToInstapaper } from "../domains/reader/instapaperD
 import {
   getArticleReaderMetadata,
   getInstapaperDelivery,
-  upsertArticleSource,
   upsertInstapaperDelivery
 } from "../shared/firebaseArticleStore.js";
+import { ingestArticle } from "../domains/ingest/ingestArticle.js";
 import { fetchSourceContent } from "../shared/sourceAggregator.js";
 import { usage } from "./lib/cli.js";
 import {
@@ -23,7 +23,8 @@ const { url, mode } = options;
 const preview = mode === "preview";
 const send = mode === "send";
 
-const source = await fetchSourceContent(url);
+// preview は取得して統計を出すだけ(保存しない)。それ以外は取り込み工程で強制的に取り直し、本文を保存する。
+const source = preview ? await fetchSourceContent(url) : await ingestArticle(url, { force: true });
 const stats = {
   url: source.url,
   title: source.title,
@@ -34,6 +35,7 @@ const stats = {
   orderedItems: source.text.match(/^\d+[.)]\s+/gm)?.length ?? 0,
   formatVersion: source.readerFormatVersion,
   formatMethod: source.readerFormatMethod,
+  quality: source.quality?.verdict,
   mode
 };
 
@@ -41,11 +43,6 @@ if (preview) {
   console.log(JSON.stringify(stats, null, 2));
   process.exit(0);
 }
-
-await upsertArticleSource(source.url, source.text, {
-  version: source.readerFormatVersion,
-  method: source.readerFormatMethod
-});
 console.log("Reader source updated: " + source.url);
 
 if (send) {

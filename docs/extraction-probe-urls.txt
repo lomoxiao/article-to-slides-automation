@@ -1,0 +1,23 @@
+# 段階1の検証用URL(catchup-stage1-plan.md の A・B・C 群)
+# 実行: npm run extraction:probe -- docs/extraction-probe-urls.txt
+
+# A群: 過去に本文が空・極小だったサイト
+https://bvnk.com/blog/global-stablecoin-regulations-2026
+https://izanami.dev/post/903fe0a2-878a-4f4b-a02c-d8784d8ef731
+https://thequantuminsider.com/2026/03/19/is-rsa-safe-new-study-argues-quantum-computers-face-a-hard-ceiling/
+https://www.reddit.com/r/SuperMario/comments/1s9hf24/my_nonspoiler_thoughts_of_the_super_mario_galaxy/?tl=ja
+https://business20channel.tv/how-quantum-ai-is-reshaping-enterprise-strategy-in-2026-according-to-ibm-google-and-mckinsey-22-04-2026
+
+# B群: 過去に取得エラーだったサイト
+https://www.businesswire.com/news/home/20260618161261/ja
+https://openai.com/index/introducing-openai-presence/
+https://aiindex.stanford.edu/wp-content/uploads/2024/05/HAI_AI-Index-Report-2024.pdf
+https://arxiv.org/html/2608.05435v1
+
+# C群: 対照(過去に全文取得できていた記事)
+https://note.com/instkoni/n/n5d933e2d3697
+https://zenn.dev/yun_bow/articles/8a162af74f2a55
+https://qiita.com/magicant/items/77361a0b1694ba629bec
+https://x.com/ai_jitan/status/2089156041842045091?s=12
+https://youtu.be/w8QArxL1Ym4?si=MQHqGvATbeRjFbCz
+https://arxiv.org/pdf/2605.10907

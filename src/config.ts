@@ -7,6 +7,10 @@ import { loadDotEnv } from "./utils/envFile.js";
 loadDotEnv();
 
 // 環境変数スキーマは env 名そのまま(flat)で定義し、export はドメイン別にグループ化する。
+// 同梱の Playwright Chromium (151) に合わせた Chrome の名乗り。数か月ごとに版番号を見直す。
+export const DEFAULT_WEB_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36";
+
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   SLACK_APP_TOKEN: z.string().optional(),
@@ -126,6 +130,31 @@ const envSchema = z.object({
     (v) => (typeof v === "string" ? v : ""),
     z.string().default("")
   ),
+  // 記事取得時にサイトへ名乗るUser-Agent。未設定なら一般的なブラウザ(Chrome)の名乗りを使う(2026-11-15決定)。
+  // content-extractor 側の既定値(自作ツール名)は bookmark-curator 用に変えていない。
+  WEB_HTTP_USER_AGENT: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().default(DEFAULT_WEB_USER_AGENT)
+  ),
+  // 記事取得のタイムアウト(ms)。content-extractor 既定の15秒では遅いサイトで失敗が出ていた。
+  WEB_HTTP_TIMEOUT_MS: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().positive().default(30_000)
+  ),
+  // 保存済み本文を再利用する期間(時間)。0 は期限なし(一度取れたら使い続ける)。
+  INGEST_REUSE_HOURS: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().min(0).default(24)
+  ),
+  // 1日のまとめ(今日のまとめ)。明示的に有効化するまで自動実行しない。
+  DIGEST_ENABLED: envBool(false),
+  // news-dashboard が材料を書き出すフォルダ(例: D:\\work\\knowledge-workflows\\news-dashboard\\.runtime\\digest)。
+  DIGEST_SOURCE_DIR: z.preprocess((v) => (typeof v === "string" ? v.trim() : ""), z.string().default("")),
+  // この時刻(JST)を過ぎても当日の材料が無ければ Slack に知らせる。
+  DIGEST_ALERT_HOUR_JST: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().min(0).max(23).default(9)
+  ),
   // Kobo向けReaderをInstapaper Full APIへ送る後処理。明示的に有効化するまで送信しない。
   INSTAPAPER_AUTO_SEND: envBool(false),
   INSTAPAPER_CONSUMER_KEY: z.string().optional(),
@@ -211,7 +240,17 @@ export const config = {
     xSessionStatePath: env.X_SESSION_STATE_PATH,
     xHeadless: env.X_HEADLESS,
     sessionsDir: env.WEB_SESSIONS_DIR,
-    loginRequiredDomains: env.WEB_LOGIN_REQUIRED_DOMAINS
+    loginRequiredDomains: env.WEB_LOGIN_REQUIRED_DOMAINS,
+    httpUserAgent: env.WEB_HTTP_USER_AGENT,
+    httpTimeoutMs: env.WEB_HTTP_TIMEOUT_MS
+  },
+  ingest: {
+    reuseHours: env.INGEST_REUSE_HOURS
+  },
+  digest: {
+    enabled: env.DIGEST_ENABLED,
+    sourceDir: env.DIGEST_SOURCE_DIR,
+    alertHourJst: env.DIGEST_ALERT_HOUR_JST
   },
   instapaper: {
     autoSend: env.INSTAPAPER_AUTO_SEND,

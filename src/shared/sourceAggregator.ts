@@ -1,11 +1,20 @@
-import { extractContent, type ExtractorOptions } from "@local/content-extractor";
+import {
+  extractContent,
+  type ExtractedContent,
+  type ExtractionQuality,
+  type ExtractorOptions
+} from "@local/content-extractor";
 import { config } from "../config.js";
 import type { SourceContent } from "../types/content.js";
+import { sanitizeArticleUrl } from "../utils/url.js";
+import { SourceUnavailableError, describeSourceFailure } from "./sourceErrors.js";
 import { loadPaginationDomainRules, recordPaginationSuccess } from "./paginationDomainStore.js";
 
 export type MergedSourceContent = {
   sources: Array<{ url: string; title: string; body: string }>;
   mergedBody: string;
+  /** 単一URL取得時の品質判定(複数URL・テキスト投入・リサーチでは付かない)。 */
+  quality?: SourceContent["quality"];
   readerFormatVersion?: number;
   readerFormatMethod?: string;
 };
@@ -18,10 +27,14 @@ const MAX_BODY_LENGTH = 60_000;
  * - X 投稿はログイン済みセッション(既定: %USERPROFILE%\.content-extractor\x-session.json)で
  *   本文を Playwright 取得する。セッションファイルが無ければ excerpt フォールバック(従来どおり)。
  */
-function buildExtractorOptions(): ExtractorOptions {
+export function buildExtractorOptions(): ExtractorOptions {
   return {
     youtubeApiKey: config.web.youtubeApiKey,
     fetchReferences: false,
+    http: {
+      userAgent: config.web.httpUserAgent,
+      timeoutMs: config.web.httpTimeoutMs
+    },
     x: {
       sessionStatePath: config.web.xSessionStatePath,
       headless: config.web.xHeadless,
@@ -57,11 +70,47 @@ export function buildDebugExtractorOptions(): ExtractorOptions {
   };
 }
 
+type ExtractFn = (url: string) => Promise<ExtractedContent>;
+
+function readQuality(content: ExtractedContent): ExtractionQuality | undefined {
+  const quality = content.metadata.quality;
+  if (!quality || typeof quality !== "object") return undefined;
+  const { verdict, chars, reasons } = quality as Partial<ExtractionQuality>;
+  if (verdict !== "full" && verdict !== "partial" && verdict !== "failed") return undefined;
+  return { verdict, chars: typeof chars === "number" ? chars : 0, reasons: Array.isArray(reasons) ? reasons : [] };
+}
+
 /**
  * 単一 URL を共有 content-extractor で取得して SourceContent に変換する。
+ *
+ * 取り込みの関門: 取得エラー(403・タイムアウト等)と、品質判定が failed の本文は
+ * SourceUnavailableError として投げ、空の本文から成果物が作られないようにする。
+ * partial(一部のみの疑い)は quality を付けて返し、生成は続ける。
  */
-export async function fetchSourceContent(url: string): Promise<SourceContent> {
-  const content = await extractContent({ url }, buildExtractorOptions());
+export async function fetchSourceContent(
+  rawUrl: string,
+  extract: ExtractFn = (url) => extractContent({ url }, buildExtractorOptions())
+): Promise<SourceContent> {
+  const url = sanitizeArticleUrl(rawUrl);
+
+  let content: ExtractedContent;
+  try {
+    content = await extract(url);
+  } catch (error) {
+    if (error instanceof Error && error.name === "ExtractionFailedError") {
+      const { code, status } = error as Error & { code?: string; status?: number };
+      const reason = code ?? "other";
+      throw new SourceUnavailableError(url, reason, describeSourceFailure(reason, { status }));
+    }
+    throw error; // SessionExpiredError などは従来どおり呼び出し側で扱う
+  }
+
+  const quality = readQuality(content);
+  if (quality?.verdict === "failed") {
+    const reason = quality.reasons[0] ?? "too_short";
+    throw new SourceUnavailableError(url, reason, describeSourceFailure(reason, { chars: quality.chars }));
+  }
+
   const readerFormatVersion =
     typeof content.metadata.readerFormatVersion === "number"
       ? content.metadata.readerFormatVersion
@@ -78,18 +127,9 @@ export async function fetchSourceContent(url: string): Promise<SourceContent> {
     author: content.metadata.author,
     publishedAt: content.metadata.publishedAt,
     readerFormatVersion,
-    readerFormatMethod
+    readerFormatMethod,
+    ...(quality ? { quality } : {})
   };
-}
-
-export async function fetchMultipleSourceContent(urls: string[]): Promise<MergedSourceContent> {
-  const sources = await Promise.all(
-    urls.map(async (url) => {
-      const source = await fetchSourceContent(url);
-      return { url: source.url, title: source.title, body: source.text };
-    })
-  );
-  return mergeSources(sources);
 }
 
 export async function fetchResearchContent(researchPrompt: string): Promise<MergedSourceContent> {
@@ -137,7 +177,7 @@ export async function fetchResearchContent(researchPrompt: string): Promise<Merg
   return mergeSources(sources.filter((source) => source.body.trim().length > 0));
 }
 
-function mergeSources(sources: Array<{ url: string; title: string; body: string }>): MergedSourceContent {
+export function mergeSources(sources: Array<{ url: string; title: string; body: string }>): MergedSourceContent {
   return {
     sources,
     mergedBody: sources

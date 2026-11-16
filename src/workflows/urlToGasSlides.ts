@@ -1,5 +1,5 @@
 import { createPendingSlideJob } from "../domains/slides/jobStore.js";
-import { clearArtifactDiagnostic, upsertSlideArtifact } from "../shared/firebaseArticleStore.js";
+import { clearArtifactDiagnostic, restoreDeletedArticle, upsertSlideArtifact } from "../shared/firebaseArticleStore.js";
 import type { SlideJob } from "../types/jobs.js";
 
 type UrlToGasSlidesInput = {
@@ -20,6 +20,8 @@ export async function runUrlToGasSlidesWorkflow(input: UrlToGasSlidesInput): Pro
   const primaryUrl = job.urls?.[0] ?? job.url;
 
   if (primaryUrl) {
+    // 削除済みの記事に生成を依頼した場合は、一覧に戻す(戻さないと成果物ができても見えない)
+    await restoreDeletedArticle(primaryUrl).catch(() => false);
     await upsertSlideArtifact({
       originalUrl: primaryUrl,
       title: input.sourceTitle || input.focus,

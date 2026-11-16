@@ -6,6 +6,7 @@ import { config } from "../config.js";
 import { spawnCli, type CliRunResult } from "./cliProcess.js";
 import { copySanitizedCodexConfig } from "./codexConfig.js";
 import { untrustedSourceSecurityConstraints } from "./promptGuards.js";
+import { codexExecSemaphore } from "./resourceSemaphore.js";
 
 type RunCodexForJobInput = {
   jobDir: string;
@@ -207,7 +208,17 @@ export type RunCodexExecOptions = {
   outputSchemaPath?: string;
 };
 
-async function runCodexExec(
+// すべての Codex 実行はここを通る。実行用フォルダの準備(ファイルコピー)から CLI の終了までを
+// 同時に1本に制限する。タイムアウトは順番待ちの時間を含まず、CLI の起動時点から数える。
+function runCodexExec(
+  prompt: string,
+  jobDir: string,
+  options: RunCodexExecOptions = {}
+): Promise<{ exitCode: number | null; stdout: string; stderr: string; codexHome: string }> {
+  return codexExecSemaphore.runExclusive(() => runCodexExecExclusive(prompt, jobDir, options));
+}
+
+async function runCodexExecExclusive(
   prompt: string,
   jobDir: string,
   options: RunCodexExecOptions = {}

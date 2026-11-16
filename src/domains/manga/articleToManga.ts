@@ -1,7 +1,8 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "../../config.js";
-import { fetchSourceContent } from "../../shared/sourceAggregator.js";
+import { ingestArticle } from "../ingest/ingestArticle.js";
+import { SOURCE_UNAVAILABLE_CODE, isSourceUnavailableError } from "../../shared/sourceErrors.js";
 import { createMangaJob, updateMangaJob } from "./mangaJobStore.js";
 import { generateMangaOutline, listCharacterSheetImages } from "./mangaOutlineGen.js";
 import { upsertGoogleDoc } from "../../shared/driveUploader.js";
@@ -82,7 +83,7 @@ export async function runArticleToMangaJob(
           title: input.sourceTitle || input.sourceText.trim().split("\n")[0].slice(0, 80) || "テキスト投入",
           text: input.sourceText.slice(0, 60_000)
         }
-      : await fetchSourceContent(input.url);
+      : await ingestArticle(input.url);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const isSessionExpired = error instanceof Error && error.name === "SessionExpiredError";
@@ -90,12 +91,22 @@ export async function runArticleToMangaJob(
       const domain = (error as { domain?: string }).domain;
       if (domain) await recordSessionExpired(domain).catch(() => {});
     }
+    // 本文が取れなかった場合も、利用者の対応(テキスト投入)待ちとしてviewerに出す
+    const isSourceUnavailable = isSourceUnavailableError(error);
+    const needsUserAction = isSessionExpired || isSourceUnavailable;
     await writeMangaViewerState({
       articleUrl: input.url,
-      status: isSessionExpired ? "action_required" : "failed",
+      status: needsUserAction ? "action_required" : "failed",
       stage: "preparing",
-      statusMessage: isSessionExpired ? message : "漫画生成の準備に失敗しました",
-      diagnostic: { code: isSessionExpired ? "SESSION_EXPIRED" : "MANGA_PREPARATION_FAILED", detail: message },
+      statusMessage: needsUserAction ? message : "漫画生成の準備に失敗しました",
+      diagnostic: {
+        code: isSessionExpired
+          ? "SESSION_EXPIRED"
+          : isSourceUnavailable
+            ? SOURCE_UNAVAILABLE_CODE
+            : "MANGA_PREPARATION_FAILED",
+        detail: message
+      },
       log
     });
     throw error;

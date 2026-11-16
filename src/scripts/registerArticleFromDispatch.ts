@@ -1,9 +1,10 @@
 import { registerArticle } from "../shared/firebaseArticleStore.js";
 import { fail } from "./lib/cli.js";
+import { sanitizeArticleUrl } from "../utils/url.js";
 
 // Entry point for the GitHub Actions `repository_dispatch` workflow.
 // The workflow maps client_payload.{url,title,headline} to these env vars.
-const url = process.env.ARTICLE_URL ?? "";
+const url = sanitizeArticleUrl(process.env.ARTICLE_URL ?? "");
 const title = process.env.ARTICLE_TITLE || undefined;
 const headline = process.env.ARTICLE_HEADLINE || undefined;
 

@@ -4,7 +4,7 @@ import path from "node:path";
 import archiver from "archiver";
 import { config } from "../../config.js";
 import { upsertDriveBinary } from "../../shared/driveBinaryUploader.js";
-import { fetchSourceContent } from "../../shared/sourceAggregator.js";
+import { ingestArticle } from "../ingest/ingestArticle.js";
 import { calculateCaptionTimeline, findShortCaptionMerge, type CaptionPhraseTiming } from "./captionTiming.js";
 import { createHyperframesProject } from "./composition.js";
 import { checkProject, HyperframesProjectValidationError, lintProject, renderProject, snapshotProject } from "./hyperframesCli.js";
@@ -88,7 +88,7 @@ export async function generateVideoLocally(
   } else {
     source = job.sourceText
       ? { url: job.url, title: job.sourceTitle ?? job.url, text: job.sourceText }
-      : await fetchSourceContent(job.url);
+      : await ingestArticle(job.url);
     await writeFile(sourcePath, source.text, "utf8");
     await writeCheckpoint(job, "source", [sourcePath]);
   }

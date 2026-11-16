@@ -1,7 +1,7 @@
 import { runArticleToMangaJob } from "./articleToManga.js";
 import { runNotebookLmDeckRetrieval } from "../notebooklm/notebookLmPipeline.js";
 import { notifyMangaCompleted, notifyMangaFailed } from "../../shared/slackNotifier.js";
-import { clearArtifactDiagnostic, upsertMangaArtifact } from "../../shared/firebaseArticleStore.js";
+import { clearArtifactDiagnostic, restoreDeletedArticle, upsertMangaArtifact } from "../../shared/firebaseArticleStore.js";
 import type { MangaTreatment } from "../../types/manga.js";
 import { resourceIntensiveSemaphore } from "../../shared/resourceSemaphore.js";
 
@@ -37,6 +37,8 @@ export function enqueueMangaGeneration(input: EnqueueMangaGenerationInput): void
 
 async function writeQueuedViewerState(input: EnqueueMangaGenerationInput): Promise<void> {
   try {
+    // 削除済みの記事に生成を依頼した場合は、一覧に戻す
+    await restoreDeletedArticle(input.url).catch(() => false);
     await upsertMangaArtifact({
       articleUrl: input.url,
       deckUrl: "",

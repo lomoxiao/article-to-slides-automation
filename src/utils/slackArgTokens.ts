@@ -1,3 +1,4 @@
+import { sanitizeArticleUrl } from "./url.js";
 // Slack メッセージ/スラッシュコマンドの引数テキストを解釈するための共通ヘルパ。
 // parseSlideArgs と parseMangaSlackArgs で共有する(トークン分割・URL正規化・テキスト整形)。
 
@@ -55,7 +56,7 @@ export function tokenizeArgs(text: string): TokenizeResult {
 export function normalizeUrl(value: string): string {
   const slackLink = value.trim().match(/^<((?:https?:\/\/)[^>|]+)(?:\|[^>]*)?>$/);
   const url = slackLink?.[1] ?? value.trim();
-  return url.replace(/[.,;:!?)}\]>]+$/u, "");
+  return sanitizeArticleUrl(url);
 }
 
 /** 自由記述値から Slack リンク装飾を除き、空白を正規化する。 */

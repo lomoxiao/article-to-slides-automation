@@ -6,6 +6,14 @@ export type SourceContent = {
   text: string;
   readerFormatVersion?: number;
   readerFormatMethod?: string;
+  /** 取り込みの品質判定。full=全文、partial=一部のみの疑い。failed は SourceUnavailableError になるため現れない。 */
+  quality?: SourceQuality;
+};
+
+export type SourceQuality = {
+  verdict: "full" | "partial" | "failed";
+  chars: number;
+  reasons: string[];
 };
 
 export type SlideOutline = {

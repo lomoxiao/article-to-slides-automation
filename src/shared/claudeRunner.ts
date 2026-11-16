@@ -2,6 +2,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
 import { spawnCli } from "./cliProcess.js";
+import { claudeExecSemaphore } from "./resourceSemaphore.js";
 
 export { terminateProcessTree } from "./cliProcess.js";
 
@@ -137,11 +138,14 @@ export function spawnClaude(
   // Windows では claude は claude.cmd 経由のため shell:true で起動する。
   // 引数は単純トークン(UUID/モデル名/フラグ)のみ。プロンプトは stdin から渡すので
   // shell によるクォート崩れの心配はない。
-  return spawnCli(config.claude.cliCommand, args, {
-    stdin: prompt,
-    timeoutMs,
-    shell: true,
-    killTree: true,
-    timeoutError: ({ stdout, stderr }) => new ClaudeTimeoutError(timeoutMs, stdout, stderr)
-  });
+  // 同時に1本に制限する。タイムアウトは順番待ちを含まず、起動時点から数える。
+  return claudeExecSemaphore.runExclusive(() =>
+    spawnCli(config.claude.cliCommand, args, {
+      stdin: prompt,
+      timeoutMs,
+      shell: true,
+      killTree: true,
+      timeoutError: ({ stdout, stderr }) => new ClaudeTimeoutError(timeoutMs, stdout, stderr)
+    })
+  );
 }

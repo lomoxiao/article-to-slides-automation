@@ -3,12 +3,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "../../config.js";
 import type { SlideJob } from "../../types/jobs.js";
-import {
-  fetchMultipleSourceContent,
-  fetchResearchContent,
-  fetchSourceContent,
-  type MergedSourceContent
-} from "../../shared/sourceAggregator.js";
+import { fetchResearchContent, type MergedSourceContent } from "../../shared/sourceAggregator.js";
+import { ingestArticle, ingestMultiple } from "../ingest/ingestArticle.js";
 import { runCodexForSlideJob, runCodexPrompt } from "../../shared/codexRunner.js";
 import { renderChartImagesInSlideData } from "./chartRenderer.js";
 import { createSlidesViaGas } from "./gasSlides.js";
@@ -28,6 +24,7 @@ import {
   upsertSlideArtifact
 } from "../../shared/firebaseArticleStore.js";
 import { recordSessionExpired } from "../../shared/sessionStatusStore.js";
+import { SOURCE_UNAVAILABLE_CODE, isSourceUnavailableError } from "../../shared/sourceErrors.js";
 import {
   notifySlackGasSlidesCompleted,
   notifySlackJobFailed
@@ -191,6 +188,9 @@ export async function processSlideJob(
       const domain = (error as { domain?: string }).domain;
       if (domain) await recordSessionExpired(domain).catch(() => {});
     }
+    // 本文が取れなかった場合も「失敗」ではなく、利用者の対応(テキスト投入)待ちとしてviewerに出す
+    const isSourceUnavailable = isSourceUnavailableError(error);
+    const needsUserAction = isSessionExpired || isSourceUnavailable;
     const latest = await readSlideJob(jobId);
     const { job: failedJob } = await transitionSlideJob(latest.job, latest.dir, "failed", {
       error: fixedMessage
@@ -201,9 +201,9 @@ export async function processSlideJob(
         originalUrl: getPrimaryJobUrl(failedJob),
         title: failedJob.focus,
         headline: failedJob.focus,
-        slidesStatus: isSessionExpired ? "action_required" : "failed",
+        slidesStatus: needsUserAction ? "action_required" : "failed",
         stage: "slides_generation",
-        statusMessage: isSessionExpired ? message : "Google Slidesの生成に失敗しました",
+        statusMessage: needsUserAction ? message : "Google Slidesの生成に失敗しました",
         slidesUrl: failedJob.deckUrl,
         presentationId: failedJob.presentationId,
         updatedAt: failedJob.updatedAt
@@ -213,9 +213,13 @@ export async function processSlideJob(
         await upsertArtifactDiagnostic({
           articleUrl: failedSourceUrl,
           artifactType: "slides",
-          status: isSessionExpired ? "action_required" : "failed",
+          status: needsUserAction ? "action_required" : "failed",
           stage: "slides_generation",
-          code: isSessionExpired ? "SESSION_EXPIRED" : "SLIDES_GENERATION_FAILED",
+          code: isSessionExpired
+            ? "SESSION_EXPIRED"
+            : isSourceUnavailable
+              ? SOURCE_UNAVAILABLE_CODE
+              : "SLIDES_GENERATION_FAILED",
           detail: fixedMessage,
           jobId: failedJob.id
         });
@@ -246,12 +250,15 @@ async function prepareSlideDataGeneration(job: SlideJob, processingDir: string, 
   const sourcePath = path.join(processingDir, "source.txt");
   const promptPath = path.join(processingDir, "codex-prompt.md");
 
-  // リーダービュー用に抽出本文を保存(best-effort。researchは対象URLがないため対象外)
+  // リーダービュー用に本文を保存(best-effort)。対象はテキスト投入のジョブだけ。
+  // URLの記事は取り込み工程(ingestArticle)が記事ごとに保存する。複数URLの連結本文を
+  // 1本目の記事の本文として上書きしないよう、ここでは保存しない。
   const sourceUrl = getPrimaryJobUrl(job);
-  if (sourceUrl && !job.researchPrompt) {
+  if (sourceUrl && job.sourceText && !job.researchPrompt) {
     upsertArticleSource(sourceUrl, content.mergedBody, {
       version: content.readerFormatVersion,
-      method: content.readerFormatMethod
+      method: content.readerFormatMethod,
+      quality: content.quality
     }).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`article source persistence failed: ${message}`);
@@ -289,16 +296,17 @@ async function fetchContentForJob(job: SlideJob): Promise<MergedSourceContent> {
   }
 
   if (urls && urls.length > 1) {
-    return fetchMultipleSourceContent(urls);
+    return ingestMultiple(urls);
   }
 
   if (urls?.[0]) {
-    const source = await fetchSourceContent(urls[0]);
+    const source = await ingestArticle(urls[0]);
     return {
       sources: [{ url: source.url, title: source.title, body: source.text }],
       mergedBody: source.text,
       readerFormatVersion: source.readerFormatVersion,
-      readerFormatMethod: source.readerFormatMethod
+      readerFormatMethod: source.readerFormatMethod,
+      quality: source.quality
     };
   }
 
