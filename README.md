@@ -184,6 +184,16 @@ news-dashboard が毎朝書き出す材料（`.runtime/digest/YYYY-MM-DD.json`�
 1日1本作ります。`DIGEST_ENABLED=true` と `DIGEST_SOURCE_DIR` の設定で、起動時と30分ごとに自動実行されます。
 手動実行と失敗した日の再実行は `npm run digest:run -- [--date YYYY-MM-DD] [--force]` です。
 
+## 簡易ブックマーク（保存だけ）
+
+読みたい記事を、iPhone の共有メニューや PC のブックマークバーから 1 操作で保存できます。保存の時点ではスライド等を作りません。
+設定の手順は [docs/bookmark-setup.md](docs/bookmark-setup.md) を参照してください。
+
+- iPhone: ショートカット → GitHub（`register-article.yml`）→ 記事を登録。PC が止まっていても保存できます。
+- PC: ブックマークバーのボタン → Viewer の小窓 → 依頼キューの `kind: "save"` → 常駐プロセスが登録。
+- `INBOX_SUMMARY_ENABLED=true` にすると、保存しただけの記事に 3 行要約とタイトルを付けます
+  （`INBOX_SUMMARY_INTERVAL_MIN` 分ごとに最大 `INBOX_SUMMARY_MAX_PER_TICK` 件）。
+
 ## 束（複数記事のまとめ）
 
 Viewer の一覧で「束ねる」を押して記事を2〜10本選ぶと、依頼キューに `kind: "bundle"` の依頼が入り、常駐プロセスが束を作ります。

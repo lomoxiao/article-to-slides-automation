@@ -146,6 +146,16 @@ const envSchema = z.object({
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
     z.coerce.number().min(0).default(24)
   ),
+  // 受信箱(保存しただけの記事)に3行要約を付ける。明示的に有効化するまで動かさない。
+  INBOX_SUMMARY_ENABLED: z.preprocess((v) => String(v ?? "").trim().toLowerCase() === "true", z.boolean()),
+  INBOX_SUMMARY_INTERVAL_MIN: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().min(1).max(720).default(10)
+  ),
+  INBOX_SUMMARY_MAX_PER_TICK: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().min(1).max(20).default(3)
+  ),
   // 束(複数記事のまとめ)に入れられる記事数の上限。
   BUNDLE_MAX_MEMBERS: z.preprocess(
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
@@ -254,6 +264,11 @@ export const config = {
   },
   bundle: {
     maxMembers: env.BUNDLE_MAX_MEMBERS
+  },
+  inbox: {
+    summaryEnabled: env.INBOX_SUMMARY_ENABLED,
+    summaryIntervalMin: env.INBOX_SUMMARY_INTERVAL_MIN,
+    summaryMaxPerTick: env.INBOX_SUMMARY_MAX_PER_TICK
   },
   digest: {
     enabled: env.DIGEST_ENABLED,

@@ -34,6 +34,7 @@ jobs:
           ARTICLE_URL: ${{ github.event.client_payload.url }}
           ARTICLE_TITLE: ${{ github.event.client_payload.title }}
           ARTICLE_HEADLINE: ${{ github.event.client_payload.headline }}
+          ARTICLE_FROM: ${{ github.event.client_payload.from }}
           FIREBASE_DATABASE_URL: ${{ vars.FIREBASE_DATABASE_URL }}
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: npx tsx src/scripts/registerArticleFromDispatch.ts

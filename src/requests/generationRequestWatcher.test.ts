@@ -6,9 +6,11 @@ import {
   generationRequestFailure,
   generationRequestSchema,
   handleBundleRequest,
+  handleSaveRequest,
   handleUrlRequest,
   type BundleGenerationRequest,
   type BundleRequestDeps,
+  type SaveGenerationRequest,
   type UrlGenerationRequest,
   type UrlRequestDeps
 } from "./generationRequestWatcher.js";
@@ -227,4 +229,38 @@ test("束の依頼: 束にできなかった場合は、理由つきの failed �
   const failure = generationRequestFailure(new BundleError("束にできる記事が2本未満です。"));
   assert.equal(failure.errorCode, "BUNDLE_FAILED");
   assert.match(failure.statusMessage ?? "", /2本未満/);
+});
+
+test("依頼の形: 保存だけの依頼は公開URL 1件。スライド等は指定できない", () => {
+  assert.equal(parse({ kind: "save", urls: ["https://example.com/a"] }).success, true);
+  assert.equal(parse({ kind: "save", urls: ["https://example.com/a"], title: "記事の題" }).success, true);
+  assert.equal(parse({ kind: "save", urls: [] }).success, false);
+  assert.equal(parse({ kind: "save", urls: ["https://example.com/a", "https://example.com/b"] }).success, false);
+  assert.equal(parse({ kind: "save", urls: ["https://example.com/a"], slides: true }).success, false);
+  assert.equal(parse({ kind: "save", urls: ["http://localhost:3000/"] }).success, false);
+  assert.equal(parse({ kind: "save", urls: ["javascript:alert(1)"] }).success, false);
+});
+
+test("保存だけの依頼: 記事を登録して done にする(本文の取得や生成はしない)", async () => {
+  const registered: Array<{ url: string; title?: string; registeredFrom: string }> = [];
+  const updates: Array<Record<string, unknown>> = [];
+  const parsed = parse({ kind: "save", urls: ["https://example.com/a"], title: "  記事の\n題  " });
+  assert.equal(parsed.success, true);
+  await handleSaveRequest(
+    parsed.data as SaveGenerationRequest,
+    async (patch) => {
+      updates.push(patch);
+    },
+    {
+      register: async (input) => {
+        registered.push(input);
+        return { articleId: "url_0123456789ab" };
+      }
+    }
+  );
+  assert.equal(registered.length, 1);
+  assert.equal(registered[0]?.registeredFrom, "bookmarklet");
+  assert.equal(registered[0]?.title, "記事の 題");
+  assert.equal(registered[0]?.url, "https://example.com/a");
+  assert.deepEqual(updates, [{ status: "done", articleId: "url_0123456789ab" }]);
 });

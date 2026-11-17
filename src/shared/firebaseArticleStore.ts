@@ -684,7 +684,13 @@ export async function upsertBundleProgress(bundleUrl: string, progress: BundlePr
     });
 }
 
-export type StoredArticleDigest = { summary: string; points: string[]; sourceHash: string };
+export type StoredArticleDigest = {
+  summary: string;
+  points: string[];
+  sourceHash: string;
+  /** 一覧に出す3行要約(各60字程度)。古い保存分には無い。 */
+  tldr?: string[];
+};
 
 /** 記事ごとの要点(束をまたいで再利用する)。無ければ undefined。 */
 export async function getArticleDigest(articleId: string): Promise<StoredArticleDigest | undefined> {
@@ -694,9 +700,78 @@ export async function getArticleDigest(articleId: string): Promise<StoredArticle
   if (typeof value.summary !== "string" || !Array.isArray(value.points) || typeof value.sourceHash !== "string") {
     return undefined;
   }
-  return { summary: value.summary, points: value.points.map(String), sourceHash: value.sourceHash };
+  const tldr = Array.isArray(value.tldr) && value.tldr.length === 3 ? value.tldr.map(String) : undefined;
+  return {
+    summary: value.summary,
+    points: value.points.map(String),
+    sourceHash: value.sourceHash,
+    ...(tldr ? { tldr } : {})
+  };
 }
 
 export async function setArticleDigest(articleId: string, digest: StoredArticleDigest): Promise<void> {
   await getDb().ref(`/articleDigests/${articleId}`).set({ ...digest, createdAt: nowJstIso() });
+}
+
+// ---- 受信箱(保存しただけの記事)
+
+/** 受信箱の3行要約づくりの対象を選ぶための、記事の最小限の情報。 */
+export type InboxCandidate = {
+  articleId: string;
+  canonicalUrl: string;
+  title: string;
+  sourceKind: string;
+  registeredFrom: string;
+  registeredAt: string;
+  deleted: boolean;
+  hasArtifact: boolean;
+  hasTldr: boolean;
+  summaryStatus: string;
+};
+
+export async function listInboxCandidates(): Promise<InboxCandidate[]> {
+  const snapshot = await getDb().ref("/articles").get();
+  const articles = (snapshot.val() ?? {}) as Record<string, Record<string, unknown> | null>;
+  const result: InboxCandidate[] = [];
+  for (const [articleId, raw] of Object.entries(articles)) {
+    if (!raw) continue;
+    const canonicalUrl = String(raw.canonicalUrl || raw.originalUrl || "");
+    if (!canonicalUrl) continue;
+    const source = (raw.source ?? {}) as { kind?: unknown };
+    const triage = (raw.triage ?? {}) as { summaryStatus?: unknown };
+    result.push({
+      articleId,
+      canonicalUrl,
+      title: String(raw.title || ""),
+      sourceKind: String(source.kind || "web"),
+      registeredFrom: String(raw.registeredFrom || ""),
+      registeredAt: String(raw.registeredAt || raw.updatedAt || ""),
+      deleted: Boolean(raw.deletedAt),
+      hasArtifact: Boolean(raw.slides || raw.manga || raw.video),
+      hasTldr: typeof raw.tldr === "string" && raw.tldr.trim().length > 0,
+      summaryStatus: String(triage.summaryStatus || "")
+    });
+  }
+  return result;
+}
+
+export type InboxSummaryStatus = "processing" | "done" | "failed";
+
+/** 3行要約づくりの状況。一度試した記事は、成功でも失敗でも繰り返さない。 */
+export async function setInboxSummaryStatus(articleId: string, summaryStatus: InboxSummaryStatus): Promise<void> {
+  if (!/^[A-Za-z0-9_]{1,64}$/.test(articleId)) throw new Error("invalid articleId");
+  await getDb().ref(`/articles/${articleId}/triage`).update({ summaryStatus, updatedAt: nowJstIso() });
+}
+
+/** タイトルが登録時の仮のもの(ホスト名やURL)のままなら、取得したタイトルに置き換える。 */
+export async function replacePlaceholderTitle(articleUrl: string, title: string): Promise<boolean> {
+  const clean = title.replace(/\s+/g, " ").trim().slice(0, MAX_TEXT_LENGTH);
+  if (!clean) return false;
+  const identity = createArticleIdentity(articleUrl);
+  const ref = getDb().ref(`/articles/${identity.articleId}`);
+  const current = String((await ref.child("title").get()).val() ?? "");
+  const placeholders = ["", identity.canonicalUrl, getUrlHost(identity.canonicalUrl)];
+  if (!placeholders.includes(current.trim())) return false;
+  await ref.update({ title: clean });
+  return true;
 }

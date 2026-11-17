@@ -391,3 +391,31 @@ test("束の進捗: 作り直しでは仮登録しない(前回の内容を残�
   const result = await runBundle({ memberIds: ["url_a", "url_b", "url_c"] }, broken.deps);
   assert.equal(result.included, 3);
 });
+
+test("要点: 3行要約つきの出力を読める。3行要約が要るのに保存分に無ければ作り直す", async () => {
+  const withTldr = JSON.stringify({
+    summary: "この記事は、ある技術の概要と使いどころを説明している。",
+    points: ["要点その1", "要点その2", "要点その3"],
+    tldr: ["- 何の話か", "何が新しいか", "結論"]
+  });
+  assert.deepEqual(parseArticleDigest(withTldr).tldr, ["何の話か", "何が新しいか", "結論"]);
+  assert.equal(parseArticleDigest(digestJson).tldr, undefined);
+
+  const markdown = "本文".repeat(50);
+  const stored = { summary: "保存済みの要約", points: ["a", "b", "c"], sourceHash: hashSource(markdown) };
+  // 束では保存分をそのまま使う
+  const reuse = digestDeps(stored);
+  assert.equal((await getOrCreateArticleDigest({ articleId: "url_a", title: "t", markdown, jobDir: "." }, reuse.deps)).reused, true);
+  // 受信箱では3行要約が要るので作り直す
+  const redo = digestDeps(stored, [withTldr]);
+  const digest = await getOrCreateArticleDigest({ articleId: "url_a", title: "t", markdown, jobDir: ".", requireTldr: true }, redo.deps);
+  assert.equal(digest.reused, false);
+  assert.equal(redo.calls.prompts, 1);
+  assert.equal(digest.tldr?.length, 3);
+  // 出力に3行要約が無ければ失敗(2回試す)
+  const missing = digestDeps(undefined, [digestJson, digestJson]);
+  await assert.rejects(
+    getOrCreateArticleDigest({ articleId: "url_a", title: "t", markdown, jobDir: ".", requireTldr: true }, missing.deps),
+    /validation failed twice/
+  );
+});

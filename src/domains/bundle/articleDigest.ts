@@ -13,7 +13,8 @@ const DIGEST_SOURCE_MAX_CHARS = 40_000;
 
 const articleDigestSchema = z.object({
   summary: z.string().trim().min(20).max(600),
-  points: z.array(z.string().trim().min(1).max(200)).min(3).max(8)
+  points: z.array(z.string().trim().min(1).max(200)).min(3).max(8),
+  tldr: z.array(z.string().trim().min(1).max(90)).length(3).optional()
 });
 
 export type ArticleDigest = StoredArticleDigest;
@@ -30,11 +31,12 @@ export function buildArticleDigestPrompt(title: string, markdown: string): strin
 - 本文にない事実・数値・固有名詞を足さないでください。
 
 出力は次の形の JSON だけにしてください(前後に説明文やコードブロック記号を書かない):
-{"summary": "…", "points": ["…", "…"]}
+{"summary": "…", "points": ["…", "…"], "tldr": ["…", "…", "…"]}
 
 規則:
 - summary: 記事全体の要約。日本語で400字以内。
 - points: 記事の要点。5〜8件、各120字以内。具体的な数値・固有名詞・結論を優先する。
+- tldr: 一覧で「読むか決める」ための3行。ちょうど3件、各60字以内。何の話か・何が新しいか・結論の順。
 
 記事タイトル: ${title.replace(/\s+/g, " ").slice(0, 200)}
 
@@ -44,7 +46,7 @@ ${markdown.slice(0, DIGEST_SOURCE_MAX_CHARS)}
 ---`;
 }
 
-export function parseArticleDigest(raw: string): { summary: string; points: string[] } {
+export function parseArticleDigest(raw: string): { summary: string; points: string[]; tldr?: string[] } {
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("article digest output does not contain a JSON object");
@@ -56,7 +58,12 @@ export function parseArticleDigest(raw: string): { summary: string; points: stri
       cause: error
     });
   }
-  return articleDigestSchema.parse(parsed);
+  const value = articleDigestSchema.parse(parsed);
+  return {
+    summary: value.summary,
+    points: value.points,
+    ...(value.tldr ? { tldr: value.tldr.map((line) => line.replace(/^[-・•]\s*/, "")) } : {})
+  };
 }
 
 export type ArticleDigestDeps = {
@@ -76,12 +83,15 @@ export const defaultArticleDigestDeps: ArticleDigestDeps = {
  * 無ければ Codex を1回実行する。出力が検証を通らなければ1回だけ再実行し、それでも駄目なら例外。
  */
 export async function getOrCreateArticleDigest(
-  input: { articleId: string; title: string; markdown: string; jobDir: string },
+  input: { articleId: string; title: string; markdown: string; jobDir: string; requireTldr?: boolean },
   deps: ArticleDigestDeps = defaultArticleDigestDeps
 ): Promise<ArticleDigest & { reused: boolean }> {
   const sourceHash = hashSource(input.markdown);
   const stored = await deps.load(input.articleId).catch(() => undefined);
-  if (stored && stored.sourceHash === sourceHash) return { ...stored, reused: true };
+  // 3行要約が要るのに、保存分(古い形)に無い場合は作り直す
+  if (stored && stored.sourceHash === sourceHash && (!input.requireTldr || stored.tldr)) {
+    return { ...stored, reused: true };
+  }
 
   const prompt = buildArticleDigestPrompt(input.title, input.markdown);
   let lastError: unknown;
@@ -93,6 +103,7 @@ export async function getOrCreateArticleDigest(
     });
     try {
       const digest: ArticleDigest = { ...parseArticleDigest(result), sourceHash };
+      if (input.requireTldr && !digest.tldr) throw new Error("article digest output has no tldr");
       // 保存は best-effort(保存できなくても、この束の作成は続ける)
       await deps.save(input.articleId, digest).catch(() => {});
       return { ...digest, reused: false };

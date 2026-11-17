@@ -40,6 +40,18 @@ news-dashboard (材料) ───▶ 1日のまとめ ────────�
 - `reader/`: Kobo 向けの読書用エディションと Instapaper 送信。
 - `digest/`: 1 日のまとめ（3 行要約・本文・音声）。
 
+## 簡易ブックマーク（保存だけ）
+
+| 入口 | 経路 |
+|---|---|
+| iPhone の共有メニュー | ショートカット → `repository_dispatch`（`register-article`）→ `src/scripts/registerArticleFromDispatch.ts` → `registerArticle` |
+| PC のブックマークバー | Viewer の `?save=`（`save-entry.js`）→ 依頼キューの `kind: "save"` → `handleSaveRequest` → `registerArticle` |
+
+保存の時点では本文を取りに行かない。`src/domains/inbox/inboxSummarizer.ts` が、保存しただけの記事
+（何も生成しておらず、3 行要約が無く、まだ試していないもの）を新しい順に選び、取り込み → 要点抽出 → 3 行要約とタイトルの保存を行う。
+状況は `/articles/{記事ID}/triage/summaryStatus`（processing / done / failed）。一度試した記事は繰り返さない。
+要点は束と同じ `/articleDigests/{記事ID}` に保存するので、あとで束に入れても AI 実行は繰り返さない。
+
 ## 束（複数記事のまとめ）
 
 `src/domains/bundle/`。依頼キューの `kind: "bundle"`（記事ID 2〜10件）から始まる。

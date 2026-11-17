@@ -66,6 +66,15 @@ const urlRequestSchema = z.object({
   urls: z.array(z.string().min(1).max(2048)).min(1).max(MAX_REQUEST_URLS)
 });
 
+// 保存だけ(ブックマーク)。記事を登録するだけで、スライド等は作らない。
+// 3行要約は、あとで常駐プロセス(inboxSummarizer)が付ける。
+const saveRequestSchema = z.object({
+  ...commonRequestFields,
+  kind: z.literal("save"),
+  urls: z.array(z.string().min(1).max(2048)).length(1),
+  title: z.string().max(200).optional()
+});
+
 // 束(複数記事のまとめ)。既定の出力は Viewer 内で読める3行要約・本文・音声なので、
 // スライド・漫画・動画がすべて偽でもよい(選んだときだけ追加で作る)。
 const bundleRequestSchema = z.object({
@@ -78,18 +87,21 @@ const bundleRequestSchema = z.object({
 
 // 依頼の種類は kind で見分ける。
 export const generationRequestSchema = z
-  .discriminatedUnion("kind", [textRequestSchema, urlRequestSchema, bundleRequestSchema])
+  .discriminatedUnion("kind", [textRequestSchema, urlRequestSchema, bundleRequestSchema, saveRequestSchema])
   .superRefine((request, ctx) => {
     if (request.kind === "bundle" && new Set(request.members).size !== request.members.length) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["members"], message: "members must be unique" });
     }
-    if (request.kind !== "bundle" && !request.slides && !request.manga && !request.video) {
+    if (request.kind === "save" && (request.slides || request.manga || request.video)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A save request must not ask for slides, manga, or video" });
+    }
+    if (request.kind !== "bundle" && request.kind !== "save" && !request.slides && !request.manga && !request.video) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "At least one of slides, manga, or video must be true" });
     }
     if (request.manga !== Boolean(request.mangaOptions)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["mangaOptions"], message: "mangaOptions must be present exactly when manga is true" });
     }
-    if (request.kind === "url") {
+    if (request.kind === "url" || request.kind === "save") {
       request.urls.forEach((url, index) => {
         // 自分のPCや家庭内ネットワークを指すURLは、依頼の時点で分かりやすく拒否する
         if (!isPublicHttpUrl(sanitizeArticleUrl(url))) {
@@ -106,6 +118,7 @@ type GenerationRequest = z.infer<typeof generationRequestSchema>;
 type TextGenerationRequest = Extract<GenerationRequest, { kind: "text" }>;
 export type UrlGenerationRequest = Extract<GenerationRequest, { kind: "url" }>;
 export type BundleGenerationRequest = Extract<GenerationRequest, { kind: "bundle" }>;
+export type SaveGenerationRequest = Extract<GenerationRequest, { kind: "save" }>;
 
 type Logger = Pick<Console, "log" | "warn" | "error">;
 type RequestUpdate = (patch: Record<string, unknown>) => Promise<void>;
@@ -195,6 +208,9 @@ async function handleRequest(requestId: string, logger: Logger): Promise<void> {
       await handleUrlRequest(request, update, defaultUrlRequestDeps(), (message) =>
         logger.log(`[generation-request] ${requestId}: ${message}`)
       );
+    } else if (request.kind === "save") {
+      await handleSaveRequest(request, update, defaultSaveRequestDeps());
+      logger.log(`[generation-request] ${requestId}: saved`);
     } else if (request.kind === "bundle") {
       await handleBundleRequest(request, update, defaultBundleRequestDeps(), (message) =>
         logger.log(`[generation-request] ${requestId}: ${message}`)
@@ -406,6 +422,28 @@ export async function handleUrlRequest(
 
   await update({ status: "done", articleId });
   log(`done (${articleId})`);
+}
+
+export type SaveRequestDeps = {
+  register: (input: { url: string; title?: string; registeredFrom: string }) => Promise<{ articleId: string }>;
+};
+
+function defaultSaveRequestDeps(): SaveRequestDeps {
+  return { register: (input) => registerArticle(input) };
+}
+
+/**
+ * 保存だけの依頼(PC のブックマークレット)。記事を登録して終わる。本文の取得や生成はしない。
+ */
+export async function handleSaveRequest(
+  request: SaveGenerationRequest,
+  update: RequestUpdate,
+  deps: SaveRequestDeps
+): Promise<void> {
+  const url = sanitizeArticleUrl(request.urls[0] ?? "");
+  const title = request.title?.replace(/\s+/g, " ").trim() || undefined;
+  const result = await deps.register({ url, title, registeredFrom: "bookmarklet" });
+  await update({ status: "done", articleId: result.articleId });
 }
 
 export type BundleRequestDeps = {
