@@ -727,6 +727,8 @@ export type InboxCandidate = {
   hasArtifact: boolean;
   hasTldr: boolean;
   summaryStatus: string;
+  /** 3行要約づくりを試した回数(失敗して再試行するときの上限判定に使う)。 */
+  summaryAttempts: number;
 };
 
 export async function listInboxCandidates(): Promise<InboxCandidate[]> {
@@ -738,7 +740,7 @@ export async function listInboxCandidates(): Promise<InboxCandidate[]> {
     const canonicalUrl = String(raw.canonicalUrl || raw.originalUrl || "");
     if (!canonicalUrl) continue;
     const source = (raw.source ?? {}) as { kind?: unknown };
-    const triage = (raw.triage ?? {}) as { summaryStatus?: unknown };
+    const triage = (raw.triage ?? {}) as { summaryStatus?: unknown; attempts?: unknown };
     result.push({
       articleId,
       canonicalUrl,
@@ -749,18 +751,34 @@ export async function listInboxCandidates(): Promise<InboxCandidate[]> {
       deleted: Boolean(raw.deletedAt),
       hasArtifact: Boolean(raw.slides || raw.manga || raw.video),
       hasTldr: typeof raw.tldr === "string" && raw.tldr.trim().length > 0,
-      summaryStatus: String(triage.summaryStatus || "")
+      summaryStatus: String(triage.summaryStatus || ""),
+      summaryAttempts: Number(triage.attempts) || 0
     });
   }
   return result;
 }
 
-export type InboxSummaryStatus = "processing" | "done" | "failed";
+/**
+ * 3行要約づくりの状況。
+ * - done: 付けた / unavailable: 本文が取れない(再試行しない)
+ * - failed: それ以外の失敗(上限回数まで再試行する)
+ */
+export type InboxSummaryStatus = "processing" | "done" | "failed" | "unavailable";
 
-/** 3行要約づくりの状況。一度試した記事は、成功でも失敗でも繰り返さない。 */
-export async function setInboxSummaryStatus(articleId: string, summaryStatus: InboxSummaryStatus): Promise<void> {
+export async function setInboxSummaryStatus(
+  articleId: string,
+  summaryStatus: InboxSummaryStatus,
+  extra: { attempts?: number; error?: string } = {}
+): Promise<void> {
   if (!/^[A-Za-z0-9_]{1,64}$/.test(articleId)) throw new Error("invalid articleId");
-  await getDb().ref(`/articles/${articleId}/triage`).update({ summaryStatus, updatedAt: nowJstIso() });
+  await getDb()
+    .ref(`/articles/${articleId}/triage`)
+    .update({
+      summaryStatus,
+      updatedAt: nowJstIso(),
+      ...(extra.attempts !== undefined ? { attempts: extra.attempts } : {}),
+      ...(extra.error !== undefined ? { error: extra.error.slice(0, 300) } : {})
+    });
 }
 
 /** タイトルが登録時の仮のもの(ホスト名やURL)のままなら、取得したタイトルに置き換える。 */

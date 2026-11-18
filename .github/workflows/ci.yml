@@ -15,7 +15,8 @@ permissions:
 env:
   # テストはブラウザを起動しないため、Playwright のブラウザDLを省いて高速化する。
   PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-
+  npm_config_onnxruntime_node_install_cuda: skip
+  
 jobs:
   check:
     runs-on: ubuntu-latest

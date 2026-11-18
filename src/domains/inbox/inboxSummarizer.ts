@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { config } from "../../config.js";
 import {
@@ -8,15 +9,23 @@ import {
   type InboxCandidate,
   type InboxSummaryStatus
 } from "../../shared/firebaseArticleStore.js";
+import { isSourceUnavailableError } from "../../shared/sourceErrors.js";
 import { getOrCreateArticleDigest } from "../bundle/articleDigest.js";
 import { ingestArticle } from "../ingest/ingestArticle.js";
 
 /**
  * 受信箱(保存しただけの記事)に、3行要約とタイトルを付ける。
  * 保存の時点ではスライド等を作らないので、「読むか決める」ための材料だけを先に用意する。
- * 一度試した記事は、成功でも失敗でも繰り返さない(失敗の理由は取り込み結果として記事に残る)。
+ * 本文が取れない記事は繰り返さない(理由は取り込み結果として記事に残る)。
+ * それ以外の失敗(AI の一時的な失敗など)は、MAX_SUMMARY_ATTEMPTS 回まで次の確認で再試行する。
  */
 const SUMMARY_KINDS = new Set(["web", "youtube"]);
+export const MAX_SUMMARY_ATTEMPTS = 3;
+
+function isRetryable(article: InboxCandidate): boolean {
+  if (!article.summaryStatus) return true;
+  return article.summaryStatus === "failed" && article.summaryAttempts < MAX_SUMMARY_ATTEMPTS;
+}
 
 /** 3行要約を付ける対象を、新しい順に max 件選ぶ。 */
 export function selectInboxTargets(candidates: InboxCandidate[], max: number): InboxCandidate[] {
@@ -28,7 +37,7 @@ export function selectInboxTargets(candidates: InboxCandidate[], max: number): I
         article.registeredFrom !== "daily-digest" &&
         !article.hasArtifact &&
         !article.hasTldr &&
-        !article.summaryStatus
+        isRetryable(article)
     )
     .sort((a, b) => b.registeredAt.localeCompare(a.registeredAt))
     .slice(0, Math.max(0, max));
@@ -38,7 +47,8 @@ export type InboxSummarizerDeps = {
   maxPerTick: number;
   jobsRoot: string;
   list: () => Promise<InboxCandidate[]>;
-  setStatus: (articleId: string, status: InboxSummaryStatus) => Promise<void>;
+  setStatus: (articleId: string, status: InboxSummaryStatus, extra?: { attempts?: number; error?: string }) => Promise<void>;
+  ensureDir: (dir: string) => Promise<void>;
   ingest: (url: string) => Promise<{ title: string; text: string }>;
   digest: (input: {
     articleId: string;
@@ -58,6 +68,9 @@ export function defaultInboxSummarizerDeps(): InboxSummarizerDeps {
     jobsRoot: path.join("jobs", "inbox"),
     list: listInboxCandidates,
     setStatus: setInboxSummaryStatus,
+    ensureDir: async (dir) => {
+      await mkdir(dir, { recursive: true });
+    },
     ingest: async (url) => {
       const source = await ingestArticle(url);
       return { title: source.title, text: source.text };
@@ -73,16 +86,23 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export async function summarizeInboxArticle(article: InboxCandidate, deps: InboxSummarizerDeps): Promise<InboxSummaryStatus> {
-  await deps.setStatus(article.articleId, "processing");
+export async function summarizeInboxArticle(
+  article: InboxCandidate,
+  deps: InboxSummarizerDeps
+): Promise<Exclude<InboxSummaryStatus, "processing">> {
+  const attempts = article.summaryAttempts + 1;
+  await deps.setStatus(article.articleId, "processing", { attempts });
   try {
     // 本文が取れない場合、理由は取り込み工程が記事に書く(Viewer に「本文が取れていません」と出る)
     const source = await deps.ingest(article.canonicalUrl);
+    // AI 実行は作業フォルダにファイルを書くので、先に作っておく
+    const jobDir = path.join(deps.jobsRoot, article.articleId);
+    await deps.ensureDir(jobDir);
     const digest = await deps.digest({
       articleId: article.articleId,
       title: source.title || article.title,
       markdown: source.text,
-      jobDir: path.join(deps.jobsRoot, article.articleId),
+      jobDir,
       requireTldr: true
     });
     if (!digest.tldr || digest.tldr.length !== 3) throw new Error("digest has no tldr");
@@ -91,13 +111,15 @@ export async function summarizeInboxArticle(article: InboxCandidate, deps: Inbox
     await deps.setStatus(article.articleId, "done");
     return "done";
   } catch (error) {
-    deps.log(`${article.articleId}: failed: ${errorMessage(error).slice(0, 300)}`);
-    await deps.setStatus(article.articleId, "failed").catch(() => {});
-    return "failed";
+    const message = errorMessage(error).slice(0, 300);
+    const status: InboxSummaryStatus = isSourceUnavailableError(error) ? "unavailable" : "failed";
+    deps.log(`${article.articleId}: ${status} (attempt ${attempts}): ${message}`);
+    await deps.setStatus(article.articleId, status, { attempts, error: message }).catch(() => {});
+    return status;
   }
 }
 
-export type InboxTickResult = { done: number; failed: number };
+export type InboxTickResult = { done: number; failed: number; unavailable: number };
 
 let running = false;
 
@@ -107,11 +129,9 @@ export async function inboxSummaryTick(deps: InboxSummarizerDeps = defaultInboxS
   running = true;
   try {
     const targets = selectInboxTargets(await deps.list(), deps.maxPerTick);
-    const result: InboxTickResult = { done: 0, failed: 0 };
+    const result: InboxTickResult = { done: 0, failed: 0, unavailable: 0 };
     for (const article of targets) {
-      const status = await summarizeInboxArticle(article, deps);
-      if (status === "done") result.done += 1;
-      else result.failed += 1;
+      result[(await summarizeInboxArticle(article, deps)) as keyof InboxTickResult] += 1;
     }
     return result;
   } finally {
@@ -125,7 +145,7 @@ export function startInboxSummarizer(logger: Pick<Console, "log" | "error"> = co
   const tick = () => {
     inboxSummaryTick()
       .then((result) => {
-        if (result !== "busy" && result.done + result.failed > 0) {
+        if (result !== "busy" && result.done + result.failed + result.unavailable > 0) {
           logger.log(`[inbox-summary] ${JSON.stringify(result)}`);
         }
       })
@@ -133,6 +153,6 @@ export function startInboxSummarizer(logger: Pick<Console, "log" | "error"> = co
   };
   tick();
   setInterval(tick, config.inbox.summaryIntervalMin * 60_000);
-  logger.log(`[inbox-summary] watching the inbox (every ${config.inbox.summaryIntervalMin} min)`);
+  logger.log(`[inbox-summary] watching the inbox (every ${config.inbox.summaryIntervalMin} min, up to ${config.inbox.summaryMaxPerTick} per check)`);
   return true;
 }

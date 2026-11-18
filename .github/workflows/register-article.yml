@@ -27,7 +27,12 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      # 登録に必要な部品だけを入れる。インストール時の追加の取得(GPU 版の部品・ブラウザなど)はしない。
+      # npm の一時的な不調に備えて 3 回まで試す。
+      - name: Install (no install scripts)
+        run: |
+          for i in 1 2 3; do npm ci --ignore-scripts && exit 0; echo "retry $i"; sleep 15; done
+          exit 1
 
       - name: Register article to Firebase
         env:
