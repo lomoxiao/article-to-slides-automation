@@ -20,6 +20,7 @@
     "reader:refresh": "tsx src/scripts/readerRefresh.ts",
     "extraction:probe": "tsx src/scripts/extractionProbe.ts",
     "digest:run": "tsx src/scripts/runDailyDigest.ts",
+    "research:spike": "tsx src/scripts/researchSpike.ts",
     "article:show": "tsx src/scripts/showArticle.ts",
     "article:restore": "tsx src/scripts/restoreArticle.ts",
     "manga:outline": "tsx src/scripts/articleToMangaOutline.ts",

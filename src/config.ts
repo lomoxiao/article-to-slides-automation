@@ -63,6 +63,38 @@ const envSchema = z.object({
   VIDEO_DRIVE_FOLDER_ID: z.string().optional(),
   VIDEO_TTS_PYTHON: z.string().default(".venv-video/Scripts/python.exe"),
   VIDEO_TTS_VOICE: z.string().default("jf_alpha"),
+  // 読み上げの合成方法。kokoro(既定・PC 内で完結) / gemini(Gemini API。API キーが必要で、従量課金になり得る)
+  TTS_PROVIDER: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() !== "" ? v.trim().toLowerCase() : undefined),
+    z.enum(["kokoro", "gemini"]).default("kokoro")
+  ),
+  GEMINI_API_KEY: z.preprocess((v) => (typeof v === "string" && v.trim() !== "" ? v.trim() : undefined), z.string().optional()),
+  GEMINI_TTS_MODEL: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() !== "" ? v.trim() : undefined),
+    z.string().regex(/^[a-z0-9.-]+$/).default("gemini-3.8-flash-lite-tts")
+  ),
+  GEMINI_TTS_VOICE: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() !== "" ? v.trim() : undefined),
+    z.string().regex(/^[A-Za-z]+$/).default("Kore")
+  ),
+  GEMINI_TTS_STYLE: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim() : undefined),
+    z.string().max(200).default("calm, clear and natural, like a Japanese news briefing")
+  ),
+  // gemini を使う範囲。audio = 1日のまとめ・束などの音声だけ / all = 動画のナレーションも
+  GEMINI_TTS_SCOPE: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() !== "" ? v.trim().toLowerCase() : undefined),
+    z.enum(["audio", "all"]).default("audio")
+  ),
+  // 1日(JST)に Gemini へ送る文字数の上限。超えたら Kokoro で作る
+  GEMINI_TTS_MAX_CHARS_PER_DAY: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().min(0).default(20000)
+  ),
+  GEMINI_TTS_TIMEOUT_MS: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().min(5000).default(120000)
+  ),
   VIDEO_TTS_SPEED: z.coerce.number().positive().default(1.0),
   VIDEO_JOB_TIMEOUT_MS: z.coerce.number().int().positive().default(2_700_000),
   VIDEO_MAX_FILE_BYTES: z.coerce.number().int().positive().default(500_000_000),
@@ -161,6 +193,19 @@ const envSchema = z.object({
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
     z.coerce.number().int().min(2).max(30).default(10)
   ),
+  // 深掘りリサーチ: 確かめる出典の最大数・1日の上限・1件の時間の上限
+  RESEARCH_MAX_SOURCES: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().min(2).max(30).default(12)
+  ),
+  RESEARCH_MAX_PER_DAY: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().min(1).max(100).default(10)
+  ),
+  RESEARCH_TIMEOUT_MIN: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().min(5).max(120).default(20)
+  ),
   // 1日のまとめ(今日のまとめ)。明示的に有効化するまで自動実行しない。
   DIGEST_ENABLED: envBool(false),
   // news-dashboard が材料を書き出すフォルダ(例: D:\\work\\knowledge-workflows\\news-dashboard\\.runtime\\digest)。
@@ -244,6 +289,18 @@ export const config = {
     jobTimeoutMs: env.VIDEO_JOB_TIMEOUT_MS,
     maxFileBytes: env.VIDEO_MAX_FILE_BYTES
   },
+  tts: {
+    provider: env.TTS_PROVIDER,
+    gemini: {
+      apiKey: env.GEMINI_API_KEY,
+      model: env.GEMINI_TTS_MODEL,
+      voice: env.GEMINI_TTS_VOICE,
+      style: env.GEMINI_TTS_STYLE,
+      scope: env.GEMINI_TTS_SCOPE,
+      maxCharsPerDay: env.GEMINI_TTS_MAX_CHARS_PER_DAY,
+      timeoutMs: env.GEMINI_TTS_TIMEOUT_MS
+    }
+  },
   notebookLm: {
     profileDir: env.NOTEBOOKLM_PROFILE_DIR,
     notebookId: env.NOTEBOOKLM_NOTEBOOK_ID,
@@ -264,6 +321,11 @@ export const config = {
   },
   bundle: {
     maxMembers: env.BUNDLE_MAX_MEMBERS
+  },
+  research: {
+    maxSources: env.RESEARCH_MAX_SOURCES,
+    maxPerDay: env.RESEARCH_MAX_PER_DAY,
+    timeoutMin: env.RESEARCH_TIMEOUT_MIN
   },
   inbox: {
     summaryEnabled: env.INBOX_SUMMARY_ENABLED,

@@ -25,6 +25,11 @@ type RunClaudeInput = {
   resumeSessionId?: string;
   /** モデル別名 or 正式名。未指定なら config.claude.model。 */
   model?: string;
+  /**
+   * 許可するツール(深掘りリサーチ用。例: WebSearch, WebFetch)。未指定ならツールを一切使わせない。
+   * ファイル操作・コマンド実行の系統は、ここに書いても許可しない。
+   */
+  allowedTools?: Array<"WebSearch" | "WebFetch">;
 };
 
 // 生成専用タスクなので Claude にツールを使わせない(誤って WebFetch / 書込み等を走らせないため)。
@@ -39,8 +44,17 @@ const DISALLOWED_TOOLS = [
   "WebSearch",
   "Task",
   "TodoWrite",
-  "NotebookEdit"
+  "NotebookEdit",
+  "MultiEdit",
+  "PowerShell"
 ];
+
+/** ツールの指定から、claude -p に渡す許可・禁止の引数を作る。 */
+export function buildClaudeToolArgs(allowedTools: readonly string[] = []): string[] {
+  const allowed: string[] = allowedTools.filter((tool) => tool === "WebSearch" || tool === "WebFetch");
+  const disallowed = DISALLOWED_TOOLS.filter((tool) => !allowed.includes(tool));
+  return [...(allowed.length ? ["--allowedTools", allowed.join(",")] : []), "--disallowedTools", ...disallowed];
+}
 
 /**
  * Claude Code を `claude -p`(ヘッドレス/print モード)で起動し、応答テキストを取得する。
@@ -54,7 +68,7 @@ export async function runClaudeHeadless(input: RunClaudeInput): Promise<ClaudeRu
   }
 
   const model = input.model ?? config.claude.model;
-  const args = ["-p", "--output-format", "json", "--model", model, "--disallowedTools", ...DISALLOWED_TOOLS];
+  const args = ["-p", "--output-format", "json", "--model", model, ...buildClaudeToolArgs(input.allowedTools)];
 
   if (input.sessionId) {
     args.push("--session-id", input.sessionId);

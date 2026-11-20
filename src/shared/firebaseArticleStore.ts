@@ -14,8 +14,11 @@ const registerArticleInputSchema = z.object({
     .max(MAX_URL_LENGTH, "url is too long")
     .refine(
       (value) =>
-        /^https?:\/\//i.test(value) || /^text:txt_[0-9a-f]{12}$/.test(value) || /^bundle:bnd_[0-9a-f]{12}$/.test(value),
-      "url must start with http:// or https:// (or be a text: / bundle: canonical)"
+        /^https?:\/\//i.test(value) ||
+        /^text:txt_[0-9a-f]{12}$/.test(value) ||
+        /^bundle:bnd_[0-9a-f]{12}$/.test(value) ||
+        /^research:rsc_[0-9a-f]{12}$/.test(value),
+      "url must start with http:// or https:// (or be a text: / bundle: / research: canonical)"
     ),
   title: z.string().trim().max(MAX_TEXT_LENGTH).optional(),
   headline: z.string().trim().max(MAX_TEXT_LENGTH).optional(),
@@ -27,7 +30,7 @@ export type RegisterArticleInput = z.input<typeof registerArticleInputSchema>;
 export type RegisterArticleResult = {
   articleId: string;
   canonicalUrl: string;
-  sourceKind: "web" | "youtube" | "text" | "bundle";
+  sourceKind: "web" | "youtube" | "text" | "bundle" | "research";
   isNew: boolean;
 };
 
@@ -555,6 +558,8 @@ export async function upsertArticleAudio(input: {
   base64: string;
   durationSec: number;
   sizeBytes: number;
+  /** どの方法で合成したか(kokoro-misaki-ja / gemini-tts)。 */
+  provider?: string;
 }): Promise<{ articleId: string }> {
   if (input.base64.length > ARTICLE_AUDIO_MAX_BASE64_LENGTH) {
     throw new Error(`article audio is too large to store: ${input.base64.length} base64 chars`);
@@ -568,6 +573,7 @@ export async function upsertArticleAudio(input: {
       status: "completed" satisfies AudioArtifactStatus,
       durationSec: input.durationSec,
       sizeBytes: input.sizeBytes,
+      ...(input.provider ? { provider: input.provider.slice(0, 40) } : {}),
       updatedAt
     }
   });
@@ -792,4 +798,53 @@ export async function replacePlaceholderTitle(articleUrl: string, title: string)
   if (!placeholders.includes(current.trim())) return false;
   await ref.update({ title: clean });
   return true;
+}
+
+// ---- 深掘りレポート
+
+export type ResearchSourceRecord = { index: number; title: string; url: string; status: "used" | "unreachable"; reason?: string };
+
+/** 深掘りの依頼内容(元記事・観点・自由記入)を、レポートの記事ノードに書く。 */
+export async function upsertResearchRequest(
+  researchUrl: string,
+  request: { baseArticleId: string; aspects: string[]; note: string; vaultCandidate: boolean }
+): Promise<void> {
+  const identity = createArticleIdentity(researchUrl);
+  await getDb()
+    .ref(`/articles/${identity.articleId}/research`)
+    .update({
+      baseArticleId: request.baseArticleId,
+      aspects: request.aspects.slice(0, 6),
+      note: request.note.slice(0, 500),
+      vaultCandidate: request.vaultCandidate
+    });
+}
+
+/** 深掘りの作成状況(束と同じ形)。 */
+export async function upsertResearchProgress(researchUrl: string, progress: BundleProgress): Promise<void> {
+  const identity = createArticleIdentity(researchUrl);
+  await getDb()
+    .ref(`/articles/${identity.articleId}/research`)
+    .update({
+      status: progress.status,
+      stage: (progress.stage ?? "").slice(0, 80),
+      statusMessage: (progress.statusMessage ?? "").slice(0, 500),
+      updatedAt: nowJstIso()
+    });
+}
+
+/** 使った出典と、確認できなかった出典の一覧。 */
+export async function upsertResearchSources(researchUrl: string, sources: ResearchSourceRecord[]): Promise<void> {
+  const identity = createArticleIdentity(researchUrl);
+  await getDb()
+    .ref(`/articles/${identity.articleId}/research/sources`)
+    .set(
+      sources.slice(0, 40).map((source) => ({
+        index: source.index,
+        title: source.title.slice(0, MAX_TEXT_LENGTH),
+        url: source.url.slice(0, MAX_URL_LENGTH),
+        status: source.status,
+        ...(source.reason ? { reason: source.reason.slice(0, 200) } : {})
+      }))
+    );
 }

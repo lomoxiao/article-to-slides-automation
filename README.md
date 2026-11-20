@@ -194,6 +194,28 @@ news-dashboard が毎朝書き出す材料（`.runtime/digest/YYYY-MM-DD.json`�
 - `INBOX_SUMMARY_ENABLED=true` にすると、保存しただけの記事に 3 行要約とタイトルを付けます
   （`INBOX_SUMMARY_INTERVAL_MIN` 分ごとに最大 `INBOX_SUMMARY_MAX_PER_TICK` 件）。
 
+## 音声の合成方法（Kokoro / Gemini TTS）
+
+1日のまとめ・束などの音声は、既定では PC 内の Kokoro で作ります。`.env` で `TTS_PROVIDER=gemini` と `GEMINI_API_KEY` を設定すると Gemini TTS で作ります。
+
+- Gemini が失敗したとき、1日の上限（`GEMINI_TTS_MAX_CHARS_PER_DAY`）を超えるときは、自動で Kokoro に切り替えます。
+- 動画のナレーションは、`GEMINI_TTS_SCOPE=all` にしない限り Kokoro のままです。
+- どちらで作ったかは `/articles/{記事ID}/audio/provider` に残ります。
+- API の形と確認日は [docs/gemini-tts-notes.md](docs/gemini-tts-notes.md)。Gemini API は従量課金になり得ます。
+
+## 深掘りリサーチ
+
+Viewer の記事の詳細や受信箱から「深掘り」を開き、観点（関連する記事・世間の評価・反対意見・技術的な裏付け・その後の動き・自分の仕事への影響）を選んで依頼すると、出典つきのレポートが「深掘り」タブに届きます。方式は brain Vault の ADR `2026-11-21-catchup-research-method`。
+
+1. 元記事の要約と要点を用意する（束と同じ `/articleDigests` を再利用）
+2. 調べる：Codex を **書き込み不可（read-only）・Web 検索は cached** で実行し、観点ごとに「事実＋出典 URL」を挙げさせる
+3. 確かめる：プログラムが出典 URL を取得する（AI なし）。**取得できなかった出典に基づく記述は使わない**
+4. まとめる：Codex を Web なしで実行し、取得できた本文だけを材料にレポートを書く
+5. 深掘りレポートを `research:rsc_…` として登録する（同じ元記事・観点・補足なら上書き）。音声は任意
+
+- 同時に 1 件、1 日 `RESEARCH_MAX_PER_DAY` 件まで、1 件 `RESEARCH_TIMEOUT_MIN` 分まで。確認できる出典が 2 件未満なら作らず、理由を返します。
+- 事前確認の手順と結果は `docs/research-spike.md` と `docs/research-spike-results.md`（`npm run research:spike`）。
+
 ## 束（複数記事のまとめ）
 
 Viewer の一覧で「束ねる」を押して記事を2〜10本選ぶと、依頼キューに `kind: "bundle"` の依頼が入り、常駐プロセスが束を作ります。

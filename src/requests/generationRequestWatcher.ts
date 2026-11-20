@@ -22,6 +22,8 @@ import {
 } from "../domains/slides/playwrightPreflight.js";
 import { SOURCE_UNAVAILABLE_CODE, isSourceUnavailableError } from "../shared/sourceErrors.js";
 import { isBundleError, runBundle, type BundleResult } from "../domains/bundle/bundlePipeline.js";
+import { RESEARCH_ASPECT_IDS } from "../domains/research/researchAspects.js";
+import { isResearchError, runResearch, type ResearchResult } from "../domains/research/researchPipeline.js";
 import { isPublicHttpUrl, sanitizeArticleUrl } from "../utils/url.js";
 
 // Viewer からの生成依頼(依頼キュー)。テキスト投入と URL 投入を同じ入口で受ける。
@@ -75,6 +77,17 @@ const saveRequestSchema = z.object({
   title: z.string().max(200).optional()
 });
 
+// 深掘りリサーチ。元記事の ID と観点(1〜6)を受け取る。スライド等は指定しない。
+const researchRequestSchema = z.object({
+  ...commonRequestFields,
+  kind: z.literal("research"),
+  articleId: z.string().regex(/^(url|yt|txt)_[0-9a-f]+$/),
+  aspects: z.array(z.enum(RESEARCH_ASPECT_IDS)).min(1).max(6),
+  note: z.string().max(500).optional(),
+  audio: z.boolean().optional().default(false),
+  vaultCandidate: z.boolean().optional().default(false)
+});
+
 // 束(複数記事のまとめ)。既定の出力は Viewer 内で読める3行要約・本文・音声なので、
 // スライド・漫画・動画がすべて偽でもよい(選んだときだけ追加で作る)。
 const bundleRequestSchema = z.object({
@@ -87,15 +100,25 @@ const bundleRequestSchema = z.object({
 
 // 依頼の種類は kind で見分ける。
 export const generationRequestSchema = z
-  .discriminatedUnion("kind", [textRequestSchema, urlRequestSchema, bundleRequestSchema, saveRequestSchema])
+  .discriminatedUnion("kind", [textRequestSchema, urlRequestSchema, bundleRequestSchema, saveRequestSchema, researchRequestSchema])
   .superRefine((request, ctx) => {
     if (request.kind === "bundle" && new Set(request.members).size !== request.members.length) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["members"], message: "members must be unique" });
     }
-    if (request.kind === "save" && (request.slides || request.manga || request.video)) {
+    if (request.kind === "research" && new Set(request.aspects).size !== request.aspects.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["aspects"], message: "aspects must be unique" });
+    }
+    if ((request.kind === "save" || request.kind === "research") && (request.slides || request.manga || request.video)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A save request must not ask for slides, manga, or video" });
     }
-    if (request.kind !== "bundle" && request.kind !== "save" && !request.slides && !request.manga && !request.video) {
+    if (
+      request.kind !== "bundle" &&
+      request.kind !== "save" &&
+      request.kind !== "research" &&
+      !request.slides &&
+      !request.manga &&
+      !request.video
+    ) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "At least one of slides, manga, or video must be true" });
     }
     if (request.manga !== Boolean(request.mangaOptions)) {
@@ -119,6 +142,7 @@ type TextGenerationRequest = Extract<GenerationRequest, { kind: "text" }>;
 export type UrlGenerationRequest = Extract<GenerationRequest, { kind: "url" }>;
 export type BundleGenerationRequest = Extract<GenerationRequest, { kind: "bundle" }>;
 export type SaveGenerationRequest = Extract<GenerationRequest, { kind: "save" }>;
+export type ResearchGenerationRequest = Extract<GenerationRequest, { kind: "research" }>;
 
 type Logger = Pick<Console, "log" | "warn" | "error">;
 type RequestUpdate = (patch: Record<string, unknown>) => Promise<void>;
@@ -208,6 +232,9 @@ async function handleRequest(requestId: string, logger: Logger): Promise<void> {
       await handleUrlRequest(request, update, defaultUrlRequestDeps(), (message) =>
         logger.log(`[generation-request] ${requestId}: ${message}`)
       );
+    } else if (request.kind === "research") {
+      await handleResearchRequest(request, update, { runResearch: (input) => runResearch(input) });
+      logger.log(`[generation-request] ${requestId}: research done`);
     } else if (request.kind === "save") {
       await handleSaveRequest(request, update, defaultSaveRequestDeps());
       logger.log(`[generation-request] ${requestId}: saved`);
@@ -446,6 +473,30 @@ export async function handleSaveRequest(
   await update({ status: "done", articleId: result.articleId });
 }
 
+export type ResearchRequestDeps = {
+  runResearch: (input: { articleId: string; aspects: string[]; note?: string; audio?: boolean; vaultCandidate?: boolean }) => Promise<ResearchResult>;
+};
+
+/** 深掘りの依頼。レポートを作って登録し、結果を依頼に書く。 */
+export async function handleResearchRequest(
+  request: ResearchGenerationRequest,
+  update: RequestUpdate,
+  deps: ResearchRequestDeps
+): Promise<void> {
+  const result = await deps.runResearch({
+    articleId: request.articleId,
+    aspects: request.aspects,
+    note: request.note,
+    audio: request.audio,
+    vaultCandidate: request.vaultCandidate
+  });
+  await update({
+    status: "done",
+    articleId: result.articleId,
+    research: { used: result.used, unreachable: result.unreachable, audio: result.audio }
+  });
+}
+
 export type BundleRequestDeps = {
   runBundle: (input: { memberIds: string[]; title?: string; audio?: boolean }) => Promise<BundleResult>;
   enqueueVideo: (input: { url: string; sourceText: string; sourceTitle: string; audience?: string; focus?: string; requestedBy: string }) => Promise<unknown>;
@@ -549,6 +600,14 @@ export function generationRequestFailure(error: unknown): Record<string, string>
     };
   }
   // 束にできる記事が足りない等、利用者にそのまま見せてよい理由
+  if (isResearchError(error)) {
+    return {
+      status: "failed",
+      errorCode: "RESEARCH_FAILED",
+      statusMessage: error.message.slice(0, 500),
+      error: error.message.slice(0, 500)
+    };
+  }
   if (isBundleError(error)) {
     return {
       status: "failed",

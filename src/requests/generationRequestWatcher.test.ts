@@ -6,10 +6,12 @@ import {
   generationRequestFailure,
   generationRequestSchema,
   handleBundleRequest,
+  handleResearchRequest,
   handleSaveRequest,
   handleUrlRequest,
   type BundleGenerationRequest,
   type BundleRequestDeps,
+  type ResearchGenerationRequest,
   type SaveGenerationRequest,
   type UrlGenerationRequest,
   type UrlRequestDeps
@@ -263,4 +265,33 @@ test("保存だけの依頼: 記事を登録して done にする(本文の取�
   assert.equal(registered[0]?.title, "記事の 題");
   assert.equal(registered[0]?.url, "https://example.com/a");
   assert.deepEqual(updates, [{ status: "done", articleId: "url_0123456789ab" }]);
+});
+
+test("依頼の形: 深掘りは元記事の ID と観点(1〜6、重複なし)。スライド等は指定できない", () => {
+  assert.equal(parse({ kind: "research", articleId: "url_0123456789ab", aspects: ["related", "reception"] }).success, true);
+  assert.equal(
+    parse({ kind: "research", articleId: "yt_0123456789ab", aspects: ["impact"], note: "決済の観点", audio: true, vaultCandidate: true }).success,
+    true
+  );
+  assert.equal(parse({ kind: "research", articleId: "url_0123456789ab", aspects: [] }).success, false);
+  assert.equal(parse({ kind: "research", articleId: "url_0123456789ab", aspects: ["unknown"] }).success, false);
+  assert.equal(parse({ kind: "research", articleId: "url_0123456789ab", aspects: ["related", "related"] }).success, false);
+  assert.equal(parse({ kind: "research", articleId: "bnd_0123456789ab", aspects: ["related"] }).success, false);
+  assert.equal(parse({ kind: "research", articleId: "url_0123456789ab", aspects: ["related"], slides: true }).success, false);
+  assert.equal(parse({ kind: "research", articleId: "url_0123456789ab", aspects: ["related"], note: "x".repeat(501) }).success, false);
+});
+
+test("深掘りの依頼: レポートを作り、結果を依頼に書いて done にする", async () => {
+  const updates: Array<Record<string, unknown>> = [];
+  const parsed = parse({ kind: "research", articleId: "url_0123456789ab", aspects: ["related"], audio: true });
+  assert.equal(parsed.success, true);
+  await handleResearchRequest(parsed.data as ResearchGenerationRequest, async (patch) => {
+    updates.push(patch);
+  }, {
+    runResearch: async (input) => {
+      assert.deepEqual(input.aspects, ["related"]);
+      return { articleId: "rsc_0123456789ab", url: "research:rsc_0123456789ab", title: "t", used: 4, unreachable: 1, audio: true };
+    }
+  });
+  assert.deepEqual(updates, [{ status: "done", articleId: "rsc_0123456789ab", research: { used: 4, unreachable: 1, audio: true } }]);
 });

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 export type ArticleIdentity = {
   articleId: string;
   canonicalUrl: string;
-  sourceKind: "web" | "youtube" | "text" | "bundle";
+  sourceKind: "web" | "youtube" | "text" | "bundle" | "research";
 };
 
 // URLを持たないテキスト投入記事の合成canonical。articleIdと同値を埋め込むことで
@@ -13,10 +13,13 @@ const TEXT_CANONICAL_PATTERN = /^text:(txt_[0-9a-f]{12})$/;
 // 束(複数記事のまとめ)の合成canonical。テキスト投入と同じ考え方で、既存の記事用の仕組みをそのまま使う。
 const BUNDLE_CANONICAL_PATTERN = /^bundle:(bnd_[0-9a-f]{12})$/;
 
-/** URL を持たない合成の記事(テキスト投入・束)か。これらは外部サイトから取り直せない。 */
+// 深掘りレポートの合成canonical。
+const RESEARCH_CANONICAL_PATTERN = /^research:(rsc_[0-9a-f]{12})$/;
+
+/** URL を持たない合成の記事(テキスト投入・束・深掘り)か。これらは外部サイトから取り直せない。 */
 export function isSyntheticArticleUrl(url: string): boolean {
   const value = url.trim();
-  return TEXT_CANONICAL_PATTERN.test(value) || BUNDLE_CANONICAL_PATTERN.test(value);
+  return TEXT_CANONICAL_PATTERN.test(value) || BUNDLE_CANONICAL_PATTERN.test(value) || RESEARCH_CANONICAL_PATTERN.test(value);
 }
 
 const TRACKING_QUERY_KEYS = new Set([
@@ -48,6 +51,11 @@ export function createArticleIdentity(rawUrl: string): ArticleIdentity {
     };
   }
 
+  const researchMatch = rawUrl.trim().match(RESEARCH_CANONICAL_PATTERN);
+  if (researchMatch) {
+    return { articleId: researchMatch[1], canonicalUrl: rawUrl.trim(), sourceKind: "research" };
+  }
+
   const youtubeVideoId = extractYouTubeVideoId(rawUrl);
   if (youtubeVideoId) {
     const canonicalUrl = `https://www.youtube.com/watch?v=${youtubeVideoId}`;
@@ -72,6 +80,14 @@ export function createArticleIdentity(rawUrl: string): ArticleIdentity {
 export function createBundleIdentity(memberArticleIds: string[]): ArticleIdentity {
   const members = [...new Set(memberArticleIds)].sort();
   return createArticleIdentity(`bundle:bnd_${shortHash(members.join(","))}`);
+}
+
+/**
+ * 深掘りレポートのID。元記事・観点(並べ替え)・自由記入から作るので、同じ依頼なら同じレポートに上書きされる。
+ */
+export function createResearchIdentity(baseArticleId: string, aspects: string[], note = ""): ArticleIdentity {
+  const key = [baseArticleId, [...new Set(aspects)].sort().join(","), note.replace(/\s+/g, " ").trim()].join("|");
+  return createArticleIdentity(`research:rsc_${shortHash(key)}`);
 }
 
 export function createTextArticleIdentity(text: string): ArticleIdentity {

@@ -9,7 +9,7 @@ import { probeDuration } from "../video/media.js";
 /** RTDB に base64 で置くための上限。超える場合は原稿が長すぎる兆候でもある。 */
 export const DIGEST_AUDIO_MAX_BYTES = 2_500_000;
 
-export type DigestAudio = { filePath: string; durationSec: number; sizeBytes: number };
+export type DigestAudio = { filePath: string; durationSec: number; sizeBytes: number; provider?: string };
 
 /**
  * 読み上げ原稿を既存の音声合成(Kokoro)で WAV にし、ffmpeg で小さな M4A(AAC・モノラル)へ圧縮する。
@@ -21,8 +21,11 @@ export async function synthesizeDigestAudio(jobDir: string, narration: string): 
   const m4aPath = path.join(jobDir, "narration.m4a");
   await writeFile(textPath, narration, "utf8");
 
+  let provider: string | undefined;
   await resourceIntensiveSemaphore.runExclusive(async () => {
-    await getNarrationProvider().synthesize({ textFile: textPath, outputPath: wavPath });
+    const narrationProvider = getNarrationProvider("audio");
+    const synthesized = await narrationProvider.synthesize({ textFile: textPath, outputPath: wavPath });
+    provider = synthesized?.providerId ?? narrationProvider.id;
     const result = await spawnCli(
       "ffmpeg",
       ["-y", "-i", wavPath, "-ac", "1", "-c:a", "aac", "-b:a", "32k", "-movflags", "+faststart", m4aPath],
@@ -35,7 +38,7 @@ export async function synthesizeDigestAudio(jobDir: string, narration: string): 
   if (size > DIGEST_AUDIO_MAX_BYTES) {
     throw new Error(`digest audio is too large: ${size} bytes (max ${DIGEST_AUDIO_MAX_BYTES})`);
   }
-  return { filePath: m4aPath, durationSec: Math.round(await probeDuration(m4aPath)), sizeBytes: size };
+  return { filePath: m4aPath, durationSec: Math.round(await probeDuration(m4aPath)), sizeBytes: size, provider };
 }
 
 /** 合成した音声ファイルを、記事の音声として保存する(1日のまとめと束で共用)。 */
@@ -45,6 +48,7 @@ export async function saveArticleAudioFile(articleUrl: string, audio: DigestAudi
     mimeType: "audio/mp4",
     base64: (await readFile(audio.filePath)).toString("base64"),
     durationSec: audio.durationSec,
-    sizeBytes: audio.sizeBytes
+    sizeBytes: audio.sizeBytes,
+    provider: audio.provider
   });
 }

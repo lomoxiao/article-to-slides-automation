@@ -65,6 +65,18 @@ news-dashboard (材料) ───▶ 1日のまとめ ────────�
 束は `bundle:bnd_<メンバーIDを並べ替えたもののハッシュ>` という疑似URLで通常の記事と同じ仕組みに載る（テキスト投入の `text:txt_…` と同じ考え方）。
 メンバーの一覧は `/articles/{束ID}/bundle/members` に書く。
 
+## 深掘りリサーチ
+
+`src/domains/research/`。依頼キューの `kind: "research"`（元記事の ID・観点 1〜6・補足・音声・Vault 候補）から始まる。
+
+| ファイル | 役割 |
+|---|---|
+| `researchAspects.ts` | 観点の ID と表示名（Viewer の `research-ask.js` と同じ表） |
+| `researchReport.ts` | 調べる・まとめるのプロンプト、出力の検証、本文の組み立て（AI を使わない） |
+| `researchPipeline.ts` | 全体の流れ。調べる（`runCodexResearchPrompt`：read-only・cached 検索）→ 出典の取得（`fetchSourceContent`）→ まとめる（`runCodexPrompt`：Web なし）→ 登録 |
+
+`/articles/{rsc_…}/research` に依頼内容・作成状況（束と同じ形）・出典の一覧（used / unreachable）を書く。
+
 ## 同時実行の制御
 
 - `codex exec` と `claude` の実行は、それぞれ同時に 1 本（`shared/resourceSemaphore.ts`）。
