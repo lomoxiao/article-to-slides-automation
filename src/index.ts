@@ -7,6 +7,7 @@ import { markInterruptedVideoJobs } from "./domains/video/videoGenerationQueue.j
 import { refreshSlidesRuntimeReadiness } from "./domains/slides/playwrightPreflight.js";
 import { startDailyDigestWatcher } from "./domains/digest/dailyDigestRunner.js";
 import { startInboxSummarizer } from "./domains/inbox/inboxSummarizer.js";
+import { startNightlySlides } from "./requests/nightlySlides.js";
 import { markInterruptedSlideJobs } from "./domains/slides/slideJobRecovery.js";
 
 const app = Fastify({
@@ -65,6 +66,7 @@ try {
 try {
   if (startDailyDigestWatcher()) app.log.info("Daily digest watcher started");
   if (startInboxSummarizer()) app.log.info("Inbox summarizer started");
+  if (startNightlySlides()) app.log.info("Nightly slides started");
 } catch (error) {
   app.log.warn(`Daily digest watcher not started: ${error instanceof Error ? error.message : String(error)}`);
 }

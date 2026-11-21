@@ -153,6 +153,19 @@ const processedRequestIds = new Set<string>();
 // mangaGenerationQueueと同じ直列Promiseチェーン。Codex実行は重いため1件ずつ処理する。
 let queueTail: Promise<void> = Promise.resolve();
 
+/**
+ * 依頼キューと同じ順番待ちに、内部の仕事(夜間の自動生成など)を並べる。
+ * Viewer からの依頼と同時に Codex を動かさないため。
+ */
+export function runInRequestQueue<T>(task: () => Promise<T>): Promise<T> {
+  const result = queueTail.then(task);
+  queueTail = result.then(
+    () => undefined,
+    () => undefined
+  );
+  return result;
+}
+
 export function startGenerationRequestWatcher(logger: Logger = console): void {
   const db = getDb();
 
@@ -335,7 +348,7 @@ export type UrlRequestDeps = {
   runSlides: (input: { urls: string[]; sourceTitle?: string; audience?: string; focus?: string }) => Promise<void>;
 };
 
-function defaultUrlRequestDeps(): UrlRequestDeps {
+export function defaultUrlRequestDeps(): UrlRequestDeps {
   return {
     register: (url) => registerArticle({ url, registeredFrom: "viewer-url" }),
     ingest: (url) => ingestArticle(url),

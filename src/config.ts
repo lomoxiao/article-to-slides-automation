@@ -188,6 +188,20 @@ const envSchema = z.object({
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
     z.coerce.number().int().min(1).max(20).default(3)
   ),
+  // 夜間の自動生成: その日に登録されて受信箱に残っている記事のスライドを、夜の時間帯に作る。
+  NIGHTLY_SLIDES_ENABLED: z.preprocess((v) => String(v ?? "").trim().toLowerCase() === "true", z.boolean()),
+  NIGHTLY_SLIDES_MAX: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().min(1).max(20).default(5)
+  ),
+  NIGHTLY_SLIDES_START_HOUR_JST: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().min(0).max(23).default(0)
+  ),
+  NIGHTLY_SLIDES_END_HOUR_JST: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().min(1).max(24).default(5)
+  ),
   // 束(複数記事のまとめ)に入れられる記事数の上限。
   BUNDLE_MAX_MEMBERS: z.preprocess(
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
@@ -331,6 +345,12 @@ export const config = {
     summaryEnabled: env.INBOX_SUMMARY_ENABLED,
     summaryIntervalMin: env.INBOX_SUMMARY_INTERVAL_MIN,
     summaryMaxPerTick: env.INBOX_SUMMARY_MAX_PER_TICK
+  },
+  nightlySlides: {
+    enabled: env.NIGHTLY_SLIDES_ENABLED,
+    max: env.NIGHTLY_SLIDES_MAX,
+    startHourJst: env.NIGHTLY_SLIDES_START_HOUR_JST,
+    endHourJst: env.NIGHTLY_SLIDES_END_HOUR_JST
   },
   digest: {
     enabled: env.DIGEST_ENABLED,

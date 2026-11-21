@@ -7,6 +7,7 @@ import {
   generationRequestSchema,
   handleBundleRequest,
   handleResearchRequest,
+  runInRequestQueue,
   handleSaveRequest,
   handleUrlRequest,
   type BundleGenerationRequest,
@@ -294,4 +295,20 @@ test("深掘りの依頼: レポートを作り、結果を依頼に書いて do
     }
   });
   assert.deepEqual(updates, [{ status: "done", articleId: "rsc_0123456789ab", research: { used: 4, unreachable: 1, audio: true } }]);
+});
+
+test("内部の仕事も依頼キューと同じ順番待ちに並び、前の仕事が失敗しても次は動く", async () => {
+  const order: string[] = [];
+  const first = runInRequestQueue(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    order.push("first");
+    throw new Error("boom");
+  });
+  const second = runInRequestQueue(async () => {
+    order.push("second");
+    return 2;
+  });
+  await assert.rejects(first, /boom/);
+  assert.equal(await second, 2);
+  assert.deepEqual(order, ["first", "second"]);
 });

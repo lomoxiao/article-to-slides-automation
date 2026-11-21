@@ -194,6 +194,15 @@ news-dashboard が毎朝書き出す材料（`.runtime/digest/YYYY-MM-DD.json`�
 - `INBOX_SUMMARY_ENABLED=true` にすると、保存しただけの記事に 3 行要約とタイトルを付けます
   （`INBOX_SUMMARY_INTERVAL_MIN` 分ごとに最大 `INBOX_SUMMARY_MAX_PER_TICK` 件）。
 
+## 夜間の自動生成（受信箱の記事のスライド）
+
+`.env` で `NIGHTLY_SLIDES_ENABLED=true` にすると、常駐プロセスが毎晩 0〜5 時（日本時間）に、**その日に登録されて受信箱に残っている記事**のスライドを作ります。詳しくは `docs/nightly-slides.md`。
+
+- 対象：前日（0〜24 時）に登録され、3 行要約が付いている Web / YouTube の記事。本文が取れなかった記事・要約がまだの記事は外す
+- 一晩に `NIGHTLY_SLIDES_MAX` 本まで（既定 5）。作るのはスライドだけで、Viewer からの依頼と同じ順番待ちに並ぶ
+- スライドを作った記事は受信箱から記事一覧へ移ります。自動で作ったことを示す印は付けません
+- PC と常駐プロセスがその時間も動いている前提です。その夜に試した記事は `.runtime/nightly-slides.json` に残り、再起動しても作り直しません
+
 ## 音声の合成方法（Kokoro / Gemini TTS）
 
 1日のまとめ・束などの音声は、既定では PC 内の Kokoro で作ります。`.env` で `TTS_PROVIDER=gemini` と `GEMINI_API_KEY` を設定すると Gemini TTS で作ります。
